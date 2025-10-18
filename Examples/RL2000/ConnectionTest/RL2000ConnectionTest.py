@@ -59,7 +59,7 @@ async def main():
                 # Display device information header
                 device.print_device_info(i)
                 temperatures = device.read_temperatures(i)
-                print(f"Current Meter: {temperatures[0]}°C, Current Load: {temperatures[1]}°C")
+                print(f"Current Meter: {temperatures[0]}°C, Current Load: {temperatures[1]}°C\n")
 
             print(f"Debug Mode: {'Enabled' if device.debug else 'Disabled'}")
             

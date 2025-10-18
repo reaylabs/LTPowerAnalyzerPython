@@ -1,9 +1,38 @@
-# InstrumentDriver.py
-# Description:
-#  Driver class for interfacing with instruments using VISA.
-#
-# History:
-#   11-29-2024  initial version
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Instrument Driver Module
+
+This module provides base classes for interfacing with laboratory instruments 
+using VISA communication protocol. It includes support for various instrument 
+types including power supplies, multimeters, and other test equipment.
+
+Features:
+    - VISA-based communication with automatic resource management
+    - Device discovery and connection handling
+    - Power supply control with voltage/current settings
+    - Multimeter measurements (voltage, current, resistance)
+    - Configurable timeouts and termination characters
+    - Debug mode for development and troubleshooting
+    - Error handling and connection status monitoring
+
+Classes:
+    - Instrument: Base instrument class with VISA communication
+    - PowerSupply: Specialized class for power supply control
+    - Multimeter: Specialized class for measurement instruments
+
+Requirements:
+    - pyvisa package: pip install pyvisa
+    - VISA backend (NI-VISA or compatible)
+    - Compatible laboratory instruments with VISA support
+
+Author: Analog Devices, Inc.
+License: See LICENSE.txt
+
+History:
+    11-29-2024  v1.0.0 - Initial version
+    10-13-2025  v1.0.1 - Updated header and documentation
+"""
 
 import pyvisa
 import math
@@ -81,43 +110,45 @@ class Instrument:
         response = None
         if self._address is None:
             resources = self._rm.list_resources()  
-            # search through all resources to find the one that matches the model
-            
-            for resource in resources:
-                try:
-                    instrument = self._rm.open_resource(resource)
-                    instrument.read_termination = self._read_termination
-                    instrument.write_termination = self._write_termination
-                   
-                    instrument.timeout = self._discover_timeout
-                    response = instrument.query("*IDN?")
-                    if self._model in response:
-                        self._address = resource
-                        instrument.timeout = self._timeout
-                        self._instrument = instrument
-                        self._is_connected = True                 
-                        break
-                    else:
-                        if (self.address != None):
-                            self._instrument = self._rm.open_resource(self._address)
-                            self._instrument.read_termination = self._read_termination
-                            self._instrument.write_termination = self._write_termination
-                            self._instrument.timeout = self._timeout
-
-                            # Perform a simple query to verify the connection
-                            response = self._instrument.query("*IDN?")
-                            self._is_connected = True
-
-                except pyvisa.VisaIOError as e:
-                    if self.debug:
-                        print(f"Connection error: {e}")
-                    self._is_connected = False
-            
-            if self.debug:
-                if self._is_connected:
-                    print(f"ID: {response}")
+        else:
+            resources = [self._address]
+        
+        # search through all resources to find the one that matches the model
+        for resource in resources:
+            try:
+                instrument = self._rm.open_resource(resource)
+                instrument.read_termination = self._read_termination
+                instrument.write_termination = self._write_termination
+                
+                instrument.timeout = self._discover_timeout
+                response = instrument.query("*IDN?")
+                if self._model in response:
+                    self._address = resource
+                    instrument.timeout = self._timeout
+                    self._instrument = instrument
+                    self._is_connected = True                 
+                    break
                 else:
-                    print(f"Failed to connect to: {self._model}")
+                    if (self.address != None):
+                        self._instrument = self._rm.open_resource(self._address)
+                        self._instrument.read_termination = self._read_termination
+                        self._instrument.write_termination = self._write_termination
+                        self._instrument.timeout = self._timeout
+
+                        # Perform a simple query to verify the connection
+                        response = self._instrument.query("*IDN?")
+                        self._is_connected = True
+
+            except pyvisa.VisaIOError as e:
+                if self.debug:
+                    print(f"Connection error: {e}")
+                self._is_connected = False
+        
+        if self.debug:
+            if self._is_connected:
+                print(f"ID: {response}")
+            else:
+                print(f"Failed to connect to: {self._model}")
         return self._is_connected
 
     def reset(self):
@@ -154,16 +185,17 @@ class Instrument:
         """
         Closes the connection to the instrument if it is open.
         """
-        if self._instrument:
+        if hasattr(self, '_instrument') and self._instrument:
             try:
                 self._instrument.close()
-                if self.debug:
+                if hasattr(self, '_debug') and self._debug:
                     print(f"Connection to {self._address} closed.")
             except pyvisa.VisaIOError as e:
                 print(f"Failed to close the connection: {e}")
             finally:
                 self._instrument = None
-        self._is_connected = False
+        if hasattr(self, '_is_connected'):
+            self._is_connected = False
 
     def __del__(self):
         """
@@ -281,6 +313,8 @@ class DigitalMultimeter(Instrument):
             print(f"Failed to set up voltage measurement: {e}")
 
 class Bode100(Instrument):
+
+
     def __init__(self, model: str, address: str = None, debug: bool = False):
         """
         Initializes the Bode100 instrument.
@@ -292,6 +326,578 @@ class Bode100(Instrument):
         super().__init__(model, address, debug)
         self._read_termination = '\n'
         self._write_termination = '\n'
+        self._attenuator = [0, 30]  # Default values: [Ch1, Ch2] in dB
+        self._bandwidth = 300  # Default value in Hz
+        self._format = "SLOG"  # Default value (logarithmic magnitude + phase)
+        self._impedance = [50, 50]  # Default values: [Ch1, Ch2] in ohms
+        self._initiate_continuous = True  # Default value (ON - continuous initiation activated)
+        self._measurement_type = "GAINphase"  # Default value (gain-phase measurement)
+        self._start_frequency = 10  # Default value in Hz
+        self._source_level = -10  # Default value in dBm
+        self._stop_frequency = 1e6  # Default value in Hz (1 MHz)
+        self._point_count = 201  # Default value
+        self._sweep_type = "LOG"  # Default value (LOG or LIN)
+        self._trigger_source = "INT"  # Default value (Internal trigger)
+        self._z_type = "Z"  # Default value (impedance)
+        
+    @property
+    def attenuator(self):
+        """
+        Get the attenuator values for both channels.
+        
+        Returns:
+            list: List of two attenuator values [Ch1_dB, Ch2_dB]
+        """
+        return self._attenuator.copy()  # Return a copy to prevent external modification
+    
+    @attenuator.setter
+    def attenuator(self, value):
+        """
+        Set the attenuator values for both channels.
+        
+        Args:
+            value (list): List of two attenuator values [Ch1_dB, Ch2_dB]
+                         Each value must be one of [0, 10, 20, 30, 40] dB
+        """
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError("Attenuator must be a list or tuple with exactly 2 values [Ch1, Ch2]")
+        
+        allowed_values = [0, 10, 20, 30, 40]
+        for i, val in enumerate(value):
+            if val not in allowed_values:
+                raise ValueError(f"Attenuator Ch{i+1} must be one of {allowed_values}, got {val}")
+        
+        self._attenuator = list(value)
+        
+    @property
+    def bandwidth(self):
+        """
+        Get the receiver bandwidth for measurements.
+        
+        Returns:
+            int: Receiver bandwidth in Hz
+        """
+        return self._bandwidth
+    
+    @bandwidth.setter
+    def bandwidth(self, value):
+        """
+        Set the receiver bandwidth for measurements.
+        
+        Args:
+            value (int): Receiver bandwidth in Hz (must be one of the allowed values)
+        """
+        allowed_values = [1, 3, 10, 30, 100, 300, 1000, 3000]
+        if value not in allowed_values:
+            raise ValueError(f"Bandwidth must be one of {allowed_values}, got {value}")
+        self._bandwidth = value
+        
+    @property
+    def impedance(self):
+        """
+        Get the input impedance values for both channels.
+        
+        Returns:
+            list: List of two impedance values [Ch1_ohms, Ch2_ohms]
+        """
+        return self._impedance.copy()  # Return a copy to prevent external modification
+    
+    @impedance.setter
+    def impedance(self, value):
+        """
+        Set the input impedance values for both channels.
+        
+        Args:
+            value (list): List of two impedance values [Ch1_ohms, Ch2_ohms]
+                         Each value must be either 50 or 1e6 ohms
+        """
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError("Impedance must be a list or tuple with exactly 2 values [Ch1, Ch2]")
+        
+        allowed_values = [50, 1e6]
+        for i, val in enumerate(value):
+            if val not in allowed_values:
+                raise ValueError(f"Impedance Ch{i+1} must be one of {allowed_values}, got {val}")
+        
+        self._impedance = list(value)
+        
+    @property
+    def initiate_continuous(self):
+        """
+        Get the continuous initiation mode status.
+        
+        Returns:
+            bool: True if continuous initiation is ON, False if OFF
+        """
+        return self._initiate_continuous
+    
+    @initiate_continuous.setter
+    def initiate_continuous(self, value):
+        """
+        Set the continuous initiation mode.
+        
+        Args:
+            value (bool or int or str): Continuous initiation mode
+                                       Accepts: True/False, 1/0, "ON"/"OFF"
+        """
+        # Convert various input formats to boolean
+        if isinstance(value, bool):
+            self._initiate_continuous = value
+        elif isinstance(value, int):
+            if value in [0, 1]:
+                self._initiate_continuous = bool(value)
+            else:
+                raise ValueError("Integer value must be 0 (OFF) or 1 (ON)")
+        elif isinstance(value, str):
+            value_upper = value.upper()
+            if value_upper in ["ON", "1"]:
+                self._initiate_continuous = True
+            elif value_upper in ["OFF", "0"]:
+                self._initiate_continuous = False
+            else:
+                raise ValueError("String value must be 'ON', 'OFF', '1', or '0'")
+        else:
+            raise ValueError("Value must be bool, int (0/1), or str ('ON'/'OFF')")
+        
+    @property
+    def format(self):
+        """
+        Get the data format for measurements.
+        
+        Returns:
+            str: Data format code
+        """
+        return self._format
+    
+    @format.setter
+    def format(self, value):
+        """
+        Set the data format for measurements.
+        
+        Args:
+            value (str): Data format code (must be one of the allowed values)
+        """
+        allowed_values = [
+            "GDEL",     # group delay
+            "IMAG",     # imaginary part
+            "MLIN",     # linear magnitude
+            "MLOG",     # logarithmic magnitude
+            "PHAS",     # phase (in degrees)
+            "REAL",     # real part
+            "SWR",      # standing wave ratio
+            "UPHA",     # unwrapped phase
+            "SLIN",     # linear magnitude + phase (deg)
+            "SLOG",     # logarithmic magnitude + phase (deg)
+            "SCOM",     # real part + imaginary part
+            "SMIT",     # R + jX - (resistance + reactance)
+            "SADM"      # G + jB - (conductance + susceptance)
+        ]
+        if value not in allowed_values:
+            raise ValueError(f"Format must be one of {allowed_values}, got '{value}'")
+        self._format = value
+        
+    @property
+    def measurement_type(self):
+        """
+        Get the measurement type.
+        
+        Returns:
+            str: Measurement type code
+        """
+        return self._measurement_type
+    
+    @measurement_type.setter
+    def measurement_type(self, value):
+        """
+        Set the measurement type.
+        
+        Args:
+            value (str): Measurement type code (must be one of the allowed values)
+        """
+        allowed_values = [
+            "CH1",       # Absolute measurement on channel 1 (VRMS)
+            "CH2",       # Absolute measurement on channel 2 (VRMS)
+            "GAINphase", # Gain - phase measurement
+            "R",         # Absolute measurement on channel R (Ch1) (VRMS)
+            "S11",       # S11 measurement
+            "S21",       # S21 measurement
+            "T",         # Absolute measurement on channel T (Ch2) (VRMS)
+            "Z"          # Impedance measurement
+        ]
+        if value not in allowed_values:
+            raise ValueError(f"Measurement type must be one of {allowed_values}, got '{value}'")
+        self._measurement_type = value
+        
+    @property
+    def point_count(self):
+        """
+        Get the number of measurement points for sweeps.
+        
+        Returns:
+            int: Number of measurement points
+        """
+        return self._point_count
+    
+    @point_count.setter
+    def point_count(self, value):
+        """
+        Set the number of measurement points for sweeps.
+        
+        Args:
+            value (int): Number of measurement points (must be one of the allowed values)
+        """
+        allowed_values = [51, 101, 201, 401, 801, 1601, 2048, 3201, 4096, 6401, 12801, 16501]
+        if value not in allowed_values:
+            raise ValueError(f"Point count must be one of {allowed_values}, got {value}")
+        self._point_count = value
+        
+    @property
+    def start_frequency(self):
+        """
+        Get the start frequency for measurements.
+        
+        Returns:
+            float: Start frequency in Hz
+        """
+        return self._start_frequency
+    
+    @start_frequency.setter
+    def start_frequency(self, value):
+        """
+        Set the start frequency for measurements.
+        
+        Args:
+            value (float): Start frequency in Hz (must be between 1 and 50e6 Hz)
+        """
+        if value < 1 or value > 50e6:
+            raise ValueError("Start frequency must be between 1 and 50e6 Hz")
+        self._start_frequency = value
+        
+    @property
+    def source_level(self):
+        """
+        Get the source level for measurements.
+        
+        Returns:
+            float: Source level in dBm
+        """
+        return self._source_level
+    
+    @source_level.setter
+    def source_level(self, value):
+        """
+        Set the source level for measurements.
+        
+        Args:
+            value (float): Source level in dBm (must be between -30 and 13 dBm)
+        """
+        if value < -30 or value > 13:
+            raise ValueError("Source level must be between -30 and 13 dBm")
+        self._source_level = value
+        
+    @property
+    def stop_frequency(self):
+        """
+        Get the stop frequency for measurements.
+        
+        Returns:
+            float: Stop frequency in Hz
+        """
+        return self._stop_frequency
+    
+    @stop_frequency.setter
+    def stop_frequency(self, value):
+        """
+        Set the stop frequency for measurements.
+        
+        Args:
+            value (float): Stop frequency in Hz (must be between 1 and 50e6 Hz)
+        """
+        if value < 1 or value > 50e6:
+            raise ValueError("Stop frequency must be between 1 and 50e6 Hz")
+        if hasattr(self, '_start_frequency') and value <= self._start_frequency:
+            raise ValueError("Stop frequency must be greater than start frequency")
+        self._stop_frequency = value
+        
+    @property
+    def sweep_type(self):
+        """
+        Get the sweep type for measurements.
+        
+        Returns:
+            str: Sweep type ("LIN" for linear, "LOG" for logarithmic)
+        """
+        return self._sweep_type
+    
+    @sweep_type.setter
+    def sweep_type(self, value):
+        """
+        Set the sweep type for measurements.
+        
+        Args:
+            value (str): Sweep type (must be either "LIN" or "LOG")
+        """
+        allowed_values = ["LIN", "LOG"]
+        if value not in allowed_values:
+            raise ValueError(f"Sweep type must be one of {allowed_values}, got '{value}'")
+        self._sweep_type = value
+        
+    @property
+    def trigger_source(self):
+        """
+        Get the trigger source for measurements.
+        
+        Returns:
+            str: Trigger source code
+        """
+        return self._trigger_source
+    
+    @trigger_source.setter
+    def trigger_source(self, value):
+        """
+        Set the trigger source for measurements.
+        
+        Args:
+            value (str): Trigger source code (must be one of the allowed values)
+        """
+        allowed_values = [
+            "BUS",  # BUS trigger - can be triggered with *TRG or :TRIG:SING
+            "INT",  # Internal trigger - device triggers itself (continuous)
+            "EXT"   # External trigger - depends on device availability
+        ]
+        if value not in allowed_values:
+            raise ValueError(f"Trigger source must be one of {allowed_values}, got '{value}'")
+        self._trigger_source = value
+        
+    @property
+    def z_type(self):
+        """
+        Get the impedance measurement type.
+        
+        Returns:
+            str: Impedance measurement type code
+        """
+        return self._z_type
+    
+    @z_type.setter
+    def z_type(self, value):
+        """
+        Set the impedance measurement type.
+        
+        Args:
+            value (str): Impedance measurement type code (must be one of the allowed values)
+        """
+        allowed_values = [
+            "Cp",   # parallel capacitance
+            "Cs",   # serial capacitance
+            "D",    # dissipation factor (tan delta)
+            "Lp",   # parallel inductance
+            "Ls",   # serial inductance
+            "QTg",  # quality factor calculated based on group delay time (Tg)
+            "Q",    # quality factor
+            "Rp",   # parallel resistance
+            "Rs",   # serial resistance
+            "Y",    # admittance
+            "Z"     # impedance
+        ]
+        if value not in allowed_values:
+            raise ValueError(f"Z-type must be one of {allowed_values}, got '{value}'")
+        self._z_type = value
+        
+    def write_properties(self):
+        """
+        Write all property values to the Bode100 instrument using SCPI commands.
+        This configures the instrument with the current property settings.
+        """
+        try:
+            # Set measurement type (MUST be first - resets other properties)
+            self._instrument.write(f':CALC:PAR:DEF {self._measurement_type}')
+            
+            # Set input attenuators
+            self._instrument.write(f':INP:ATT:CH1 {self._attenuator[0]}')
+            self._instrument.write(f':INP:ATT:CH2 {self._attenuator[1]}')
+            
+            # Set receiver bandwidth
+            self._instrument.write(f':SENS:BAND {self._bandwidth}')
+            
+            # Set data format
+            self._instrument.write(f':CALC:FORM {self._format}')
+            
+            # Set input impedances
+            self._instrument.write(f':INP:IMP:CH1 {int(self._impedance[0])}')
+            self._instrument.write(f':INP:IMP:CH2 {int(self._impedance[1])}')
+            
+            # Set continuous initiation mode
+            self._instrument.write(f':INIT:CONT {1 if self._initiate_continuous else 0}')
+            
+            # Set number of measurement points
+            self._instrument.write(f':SENS:SWE:POIN {self._point_count}')
+            
+            # Set start frequency
+            self._instrument.write(f':SENS:FREQ:STAR {self._start_frequency}')
+            
+            # Set source level
+            self._instrument.write(f':SOUR:POW {self._source_level}')
+            
+            # Set stop frequency
+            self._instrument.write(f':SENS:FREQ:STOP {self._stop_frequency}')
+            
+            # Set sweep type
+            self._instrument.write(f':SENS:SWE:TYPE {self._sweep_type}')
+            
+            # Set trigger source
+            self._instrument.write(f':TRIG:SOUR {self._trigger_source}')
+            
+            # Set impedance measurement type (Z-type)
+            self._instrument.write(f':SENS:Z:TYPE {self._z_type}')
+            
+            # Wait for all commands to complete
+            self._instrument.write('*WAI')
+            
+            if self.debug:
+                print("Properties written to Bode100:")
+                print(f"  Attenuator Ch1: {self._attenuator[0]} dB")
+                print(f"  Attenuator Ch2: {self._attenuator[1]} dB")
+                print(f"  Bandwidth: {self._bandwidth} Hz")
+                print(f"  Format: {self._format}")
+                print(f"  Impedance Ch1: {int(self._impedance[0])} ohms")
+                print(f"  Impedance Ch2: {int(self._impedance[1])} ohms")
+                print(f"  Initiate Continuous: {'ON' if self._initiate_continuous else 'OFF'}")
+                print(f"  Measurement type: {self._measurement_type}")
+                print(f"  Point count: {self._point_count}")
+                print(f"  Start frequency: {self._start_frequency} Hz")
+                print(f"  Source level: {self._source_level} dBm")
+                print(f"  Stop frequency: {self._stop_frequency} Hz")
+                print(f"  Sweep type: {self._sweep_type}")
+                print(f"  Trigger source: {self._trigger_source}")
+                print(f"  Z-type: {self._z_type}")
+                
+        except Exception as e:
+            print(f"Error writing properties to Bode100: {e}")
+            raise
+        
+
+    def read_measurement_data(self):
+        """
+        Reads the measurement data from the Bode100 instrument.
+
+        Returns:
+            list: List of measurement data points as floats.
+        """
+        if not self.is_connected:
+            print("✗ ERROR: Instrument not connected. Cannot read measurement data.")
+            return []
+        
+        try:
+            frequency_response = self._instrument.query(":SENS:FREQ:DATA?")
+            frequency_list = [float(x) for x in frequency_response.split(',')]
+            
+            # Read measurement data (combined magnitude and phase)
+            measurement_response = self._instrument.query(":CALC:DATA:SDAT?")
+            measurement_list = [float(x) for x in measurement_response.split(',')]
+            return frequency_list, measurement_list
+
+        except Exception as e:
+            print(f"Error reading measurement data from Bode100: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
+            return []
+        
+    def read_properties(self):
+        """
+        Read property values from the Bode100 instrument and update internal properties.
+        Only reads properties that are known to be supported by the Bode100 SCPI interface.
+        """
+        if not self.is_connected:
+            print("✗ ERROR: Instrument not connected. Cannot read properties.")
+            return False
+        
+        try:
+            # Read basic sweep configuration (known to work)
+            start_freq = self._instrument.query(":SENS:FREQ:STAR?").strip()
+            self._start_frequency = float(start_freq)
+            
+            stop_freq = self._instrument.query(":SENS:FREQ:STOP?").strip()
+            self._stop_frequency = float(stop_freq)
+            
+            points = self._instrument.query(":SENS:SWE:POIN?").strip()
+            self._point_count = int(points)
+            
+            sweep_type = self._instrument.query(":SENS:SWE:TYPE?").strip()
+            # Convert response to our format (instrument may return "LIN" or "LINEAR")
+            if "LIN" in sweep_type.upper():
+                self._sweep_type = "LIN"
+            elif "LOG" in sweep_type.upper():
+                self._sweep_type = "LOG"
+            else:
+                self._sweep_type = sweep_type  # Keep original if unrecognized
+            
+            bandwidth = self._instrument.query(":SENS:BAND?").strip()
+            self._bandwidth = int(float(bandwidth))  # Convert to int Hz
+            
+            # Try to read format (may not be supported on all firmware versions)
+            try:
+                format_resp = self._instrument.query(":CALC:FORM?").strip()
+                self._format = format_resp
+            except:
+                if self.debug:
+                    print("  Note: Format query not supported, keeping current value")
+            
+            # Try to read source level
+            try:
+                source_level = self._instrument.query(":SOUR:VOLT?").strip()
+                self._source_level = float(source_level)
+            except:
+                if self.debug:
+                    print("  Note: Source level query not supported, keeping current value")
+            
+            # Try to read trigger source
+            try:
+                trigger_source = self._instrument.query(":TRIG:SOUR?").strip()
+                self._trigger_source = trigger_source
+            except:
+                if self.debug:
+                    print("  Note: Trigger source query not supported, keeping current value")
+            
+            # Try to read continuous initiation mode
+            try:
+                init_cont = self._instrument.query(":INIT:CONT?").strip()
+                # Convert response to boolean (may return "1"/"0" or "ON"/"OFF")
+                self._initiate_continuous = init_cont.upper() in ["1", "ON", "TRUE"]
+            except:
+                if self.debug:
+                    print("  Note: Initiate continuous query not supported, keeping current value")
+            
+            # Note: The following properties cannot be reliably read from Bode100:
+            # - attenuator: :INP:ATT:CH1? and :INP:ATT:CH2? not consistently supported
+            # - impedance: :INP:IMP:CH1? and :INP:IMP:CH2? not consistently supported  
+            # - initiate_continuous: :INIT:CONT? may not be consistently supported
+            # - measurement_type: :CALC:PAR:DEF? response format varies
+            # - trigger_source: :TRIG:SOUR? may not be consistently supported
+            # - z_type: :SENS:Z:TYPE? not consistently supported
+            
+            if self.debug:
+                print("Properties read from Bode100:")
+                print(f"  Start frequency: {self._start_frequency} Hz")
+                print(f"  Stop frequency: {self._stop_frequency} Hz")
+                print(f"  Point count: {self._point_count}")
+                print(f"  Sweep type: {self._sweep_type}")
+                print(f"  Bandwidth: {self._bandwidth} Hz")
+                print(f"  Format: {self._format}")
+                print(f"  Initiate Continuous: {'ON' if self._initiate_continuous else 'OFF'}")
+                print(f"  Source level: {self._source_level} dBm")
+                print(f"  Trigger source: {self._trigger_source}")
+                print("  Note: Some properties (attenuator, impedance, etc.) cannot be reliably read")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error reading properties from Bode100: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
+            return False
         
     def read_calibration_file(self, filename):
         """
@@ -380,90 +986,298 @@ class Bode100(Instrument):
 
         return R, C
 
-    def configure_sweep(self, start_frequency, stop_frequency, point_count=101, sweep_type="LINEAR"):
+    def execute_impedance_sweep(self, measurement_method="P1R"):
         """
-        Configures the frequency sweep settings for the Bode 100.
+        Execute an impedance sweep measurement on the Bode100.
+        Must call configure_sweep() and configure_receivers() first.
         
         Args:
-            start_frequency (float): Start frequency of the sweep in Hz.
-            stop_frequency (float): Stop frequency of the sweep in Hz.
-            point_count (int, optional): Number of points in the sweep. Default is 101.
-            sweep_type (str, optional): Type of sweep, e.g., "LINEAR", "LOG". Default is "LINEAR".
+            measurement_method (str, optional): Impedance measurement method. Default is "P1R".
+                                              Options: "P1R", "TSER", "TPAR", "RSER", "RPAR"
         
-        """
-        valid_sweep_types = ["LINEAR", "LOG"]
-        
-        # Validate the sweep type
-        if sweep_type not in valid_sweep_types:
-            raise ValueError(f"Invalid sweep_type. Expected one of {valid_sweep_types}, got {sweep_type}")
-
-        try:
-            # Set the sweep type
-            self._instrument.write(f'SWE:TYPE {sweep_type}')
-            
-            # Configure the sweep frequencies
-            self._instrument.write(f'FREQ:START {start_frequency}')
-            self._instrument.write(f'FREQ:STOP {stop_frequency}')
-            
-            # Configure the number of points in the sweep
-            self._instrument.write(f'SWE:POIN {point_count}')
-        except:
-             print(f"Error setting sweep parameters : {e}")
-
-    def execute_two_port_sweep(self, start_frequency, stop_frequency, bandwidth = "100Hz", point_count=2, sweep_type="LOG", magnitude_dbm = 2 ):
-        """
-        Make a two port impedance
-
-        :param frequency: Frequency in Hz at which to measure.
-        :param bandwidth: Bandwidth in Hz at which to measure.
-        :param point_count: Number of points per measurement.
-        :param sweep_type: LINEAR or LOG
-        :return: A tuple containing (resistance, capacitance).
+        Returns:
+            list: List of tuples containing (frequency, impedance_magnitude, impedance_phase, resistance, capacitance)
+                 for each measurement point. Returns None if an error occurs.
         """
         try:
-            #set up the measurement
-            self._instrument.write(':SENS:FREQ:STAR ' +str(start_frequency)) 
-            self._instrument.write(':SENS:FREQ:STOP ' + str(stop_frequency))
-            self._instrument.write(':SENS:SWE:POIN ' + str(point_count))
-            self._instrument.write(':SENS:SWE:TYPE ' + sweep_type)
-            self._instrument.write(':SENS:BAND ' + bandwidth)
-            self._instrument.write(':CALC:PAR:DEF Z')  #Impedance measurement
-            self._instrument.write(":SENS:Z:METH P1R")
-
-            self._instrument.write(":CALC:FORM SLIN") # linear magnitude in Ohms + phase(deg)
-            self._instrument.write(f":SOUR:POW {magnitude_dbm}")
-
-            #setup the trigger
-            self._instrument.write(':TRIG:SOUR BUS')  # Intializes trigger system to use BUS - to be used in combination with TRIG:SING and OPC
-            self._instrument.write(':INIT:CONT ON') # Sets the trigger in continous mode. This way after a measurement the trigges gets back in state "ready" and waits for a further measurement.
-
-            #run the sweep
-            self._instrument.write(':TRIG:SING')
-            self._instrument.query('*OPC?') # this command waits for all pending operations to finish and afterwards returns an 1
-
-            #read the raw data
-            gain_phase_results = self._instrument.query(":CALC:DATA:SDAT?")
-            frequency_results = self._instrument.query(":SENS:FREQ:DATA?")
-
-            #parse the raw data
-            gain_phase_list = list(map(float, gain_phase_results.split(",")))
-            magnitude_list = gain_phase_list[0:point_count]
-            phase_list = gain_phase_list[point_count:]
-            frequency_list = list(map(float, frequency_results.split(",")))
-
-            #combine into a final sweep list
-            sweep_list = []  # List to hold the final results
-
-            # Iterate over frequency, magnitude, and phase lists together
+            # Configure measurement type and method
+            self.configure_measurement(measurement_type="IMPEDANCE", measurement_method=measurement_method)
+            
+            # Execute the single sweep
+            self._instrument.write(':INIT:IMM')       # Initiate measurement immediately
+            self._instrument.query('*OPC?')           # Wait for completion
+            
+            # Read frequency data
+            frequency_response = self._instrument.query(":SENS:FREQ:DATA?")
+            frequency_list = [float(x) for x in frequency_response.split(',')]
+            
+            # Read impedance data (magnitude and phase combined)
+            impedance_response = self._instrument.query(":CALC:DATA:SDAT?")
+            impedance_list = [float(x) for x in impedance_response.split(',')]
+            
+            # Calculate point count from frequency data length
+            point_count = len(frequency_list)
+            
+            # Split into magnitude and phase lists
+            magnitude_list = impedance_list[0:point_count]
+            phase_list = impedance_list[point_count:2*point_count]
+            
+            # Calculate R and C for each measurement point
+            sweep_results = []
             for frequency, magnitude, phase in zip(frequency_list, magnitude_list, phase_list):
-                resistance, capacitance = self.calculate_series_RC(magnitude, phase, frequency)  # Calculate R and C
-                # Append a tuple of all values to the final list
-                sweep_list.append((frequency, magnitude, phase, resistance, capacitance))
-            return sweep_list
-        
+                try:
+                    resistance, capacitance = self.calculate_series_RC(magnitude, phase, frequency)
+                    sweep_results.append((frequency, magnitude, phase, resistance, capacitance))
+                except ValueError as calc_error:
+                    # Handle calculation errors gracefully
+                    if self.debug:
+                        print(f"Calculation error at {frequency} Hz: {calc_error}")
+                    sweep_results.append((frequency, magnitude, phase, float('nan'), float('nan')))
+            
+            if self.debug:
+                print(f"Impedance sweep completed: {len(sweep_results)} points")
+                print(f"Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
+                print(f"Impedance range: {min(magnitude_list):.2f} Ω to {max(magnitude_list):.2f} Ω")
+                print(f"Phase range: {min(phase_list):.2f}° to {max(phase_list):.2f}°")
+            
+            return sweep_results
+            
         except Exception as e:
-            print(f"Error execute two port sweep : {e}")
+            print(f"Error executing impedance sweep: {e}")
             return None
+
+    def execute_gain_phase_sweep(self):
+        """
+        Execute a single gain and phase sweep measurement on the Bode100.
+        Must call configure_sweep() and configure_receivers() first.
+        
+        Args:
+            measurement_method (str, optional): Gain/phase measurement method. Default is "R1R2".
+        
+        Returns:
+            list: List of tuples containing (frequency, gain_db, phase_deg) for each measurement point.
+                 Returns None if an error occurs.
+        """
+        try:
+            self.write_properties()  # Ensure properties are written to the instrument
+            self.read_properties()
+            self.trigger_single()
+            self.wait_for_operation_to_complete()
+            frequency_list, measurement_list = self.read_measurement_data()
+            
+            # Parse interleaved magnitude and phase data (per official documentation pattern)
+            num_points = len(frequency_list)
+            gain_list = measurement_list[0:num_points]          # First half: magnitude values in dB
+            phase_list = measurement_list[num_points:num_points*2]  # Second half: phase values in degrees
+            
+            # Combine into final results list
+            sweep_results = []
+            for frequency, gain, phase in zip(frequency_list, gain_list, phase_list):
+                sweep_results.append((frequency, gain, phase))
+            
+            if self.debug:
+                print(f"Gain/phase sweep completed: {len(sweep_results)} points")
+                print(f"Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
+                print(f"Gain range: {min(gain_list):.2f} dB to {max(gain_list):.2f} dB")
+                print(f"Phase range: {min(phase_list):.2f}° to {max(phase_list):.2f}°")
+            
+            return sweep_results
+            
+        except Exception as e:
+            print(f"Error executing gain/phase sweep: {e}")
+            return None
+
+    def print_configuration(self):
+        """
+        Print the complete current configuration of the Bode100 instrument.
+        Displays all current property values that will be written to the instrument.
+        """
+        print("=" * 60)
+        print("BODE100 INSTRUMENT CONFIGURATION")
+        print("=" * 60)
+        
+        # Basic instrument information
+        print("\n📟 INSTRUMENT INFORMATION:")
+        if self.is_connected:
+            try:
+                idn = self._instrument.query("*IDN?").strip()
+                print(f"  Identity: {idn}")
+            except:
+                print("  Identity: Unable to query (instrument may be busy)")
+        else:
+            print("  Status: Not connected")
+        
+        # All Property Values
+        print("\n⚙️  CURRENT PROPERTY VALUES:")
+        print(f"  Attenuator Ch1: {self._attenuator[0]} dB")
+        print(f"  Attenuator Ch2: {self._attenuator[1]} dB")
+        print(f"  Bandwidth: {self._bandwidth} Hz")
+        print(f"  Format: {self._format}")
+        print(f"  Impedance Ch1: {int(self._impedance[0])} ohms")
+        print(f"  Impedance Ch2: {int(self._impedance[1])} ohms")
+        print(f"  Initiate Continuous: {'ON' if self._initiate_continuous else 'OFF'}")
+        print(f"  Measurement Type: {self._measurement_type}")
+        print(f"  Point Count: {self._point_count}")
+        print(f"  Start Frequency: {self._start_frequency} Hz")
+        print(f"  Source Level: {self._source_level} dBm")
+        print(f"  Stop Frequency: {self._stop_frequency} Hz")
+        print(f"  Sweep Type: {self._sweep_type}")
+        print(f"  Trigger Source: {self._trigger_source}")
+        print(f"  Z-Type: {self._z_type}")
+        
+        print(f"\n📊 FREQUENCY RANGE:")
+        print(f"  {self._start_frequency:,.1f} Hz → {self._stop_frequency:,.0f} Hz")
+        print(f"  Ratio: {self._stop_frequency/self._start_frequency:,.1f}:1")
+        print(f"  Sweep: {self._sweep_type} with {self._point_count} points")
+        
+        print(f"\n🔧 MEASUREMENT SETUP:")
+        print(f"  Type: {self._measurement_type}")
+        if self._measurement_type == "Z":
+            print(f"  Z-Parameter: {self._z_type}")
+        print(f"  Format: {self._format}")
+        print(f"  Bandwidth: {self._bandwidth} Hz")
+        print(f"  Source Level: {self._source_level} dBm")
+        print(f"  Trigger Source: {self._trigger_source}")
+        print(f"  Continuous Initiation: {'ON' if self._initiate_continuous else 'OFF'}")
+        
+        print(f"\n📡 INPUT CONFIGURATION:")
+        print(f"  Ch1: {int(self._impedance[0])} Ω, {self._attenuator[0]} dB attenuation")
+        print(f"  Ch2: {int(self._impedance[1])} Ω, {self._attenuator[1]} dB attenuation")
+        
+        print("\n" + "=" * 60)
+        print("Configuration display completed")
+        print("=" * 60)
+
+    def trigger_single(self):
+        """
+        Send a single trigger command to the Bode100 instrument.
+        
+        This command (:TRIGger[:SEQuence]:SINGle) generates a trigger regardless 
+        of the trigger source selection. The command is implemented as an overlapped 
+        command and is not completed until the measurement has ended. Therefore, 
+        the end of the command CAN be awaited with an OPC command.
+        
+        Important Notes:
+        - If the trigger is NOT in the "Waiting for Trigger" state, the command has 
+          no effect and a "Trigger Ignored" error (nr. -211) is generated
+        - Unlike :TRIGger[:SEQuence][:IMMediate], this command CAN be awaited
+        - The command waits for measurement completion before returning
+        
+        Returns:
+            bool: True if command was sent successfully, False otherwise
+        """
+        if not self.is_connected:
+            print("✗ ERROR: Instrument not connected. Cannot send trigger.")
+            return False
+        
+        try:
+            # Send the single trigger command
+            self._instrument.write(':TRIG:SING')
+            
+            if self.debug:
+                print("✓ Single trigger command sent to Bode100")
+            
+            return True
+            
+        except Exception as e:
+            print(f"✗ Error sending single trigger: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
+            return False
+
+    def trigger_immediate(self):
+        """
+        Send an immediate trigger command to the Bode100 instrument.
+        
+        This command (:TRIGger[:SEQuence][:IMMediate]) generates a trigger regardless 
+        of the trigger source selection. The command completes before the measurement 
+        is finished and CANNOT be awaited with an OPC command.
+        
+        Important Notes:
+        - If the trigger is NOT in the "Waiting for Trigger" state, the command has 
+          no effect and a "Trigger Ignored" error (nr. -211) is generated
+        - Unlike :TRIGger[:SEQuence]:SINGle, this command CANNOT be awaited
+        - The command returns immediately, not waiting for measurement completion
+        
+        Returns:
+            bool: True if command was sent successfully, False otherwise
+        """
+        if not self.is_connected:
+            print("✗ ERROR: Instrument not connected. Cannot send immediate trigger.")
+            return False
+        
+        try:
+            # Send the immediate trigger command
+            self._instrument.write(':TRIG:IMM')
+            
+            if self.debug:
+                print("✓ Immediate trigger command sent to Bode100")
+                print("  Note: Command completes immediately, not waiting for measurement")
+            
+            return True
+            
+        except Exception as e:
+            print(f"✗ Error sending immediate trigger: {e}")
+            if self.debug:
+                print("  Note: If error -211 (Trigger Ignored), instrument may not be waiting for trigger")
+                import traceback
+                traceback.print_exc()
+            return False
+
+    def wait_for_operation_to_complete(self, timeout=30):
+        """
+        Wait for the current operation to complete using the *OPC? command.
+        
+        The *OPC? (Operation Complete Query) command will block until all pending 
+        operations are completed, then return "1". This is useful for synchronizing
+        with operations like trigger_single() that can be awaited.
+        
+        Args:
+            timeout (float, optional): Maximum time to wait in seconds. Default is 30.
+        
+        Returns:
+            bool: True if operation completed successfully, False if timeout or error
+        """
+        if not self.is_connected:
+            print("✗ ERROR: Instrument not connected. Cannot wait for operation completion.")
+            return False
+        
+        try:
+            # Set a timeout for the query to prevent hanging indefinitely
+            original_timeout = self._instrument.timeout
+            self._instrument.timeout = timeout * 1000  # Convert to milliseconds
+            
+            if self.debug:
+                print(f"⏳ Waiting for operation to complete (timeout: {timeout}s)...")
+            
+            # Send *OPC? query and wait for response
+            response = self._instrument.query('*OPC?')
+            
+            # Restore original timeout
+            self._instrument.timeout = original_timeout
+            
+            if response.strip() == "1":
+                if self.debug:
+                    print("✓ Operation completed successfully")
+                return True
+            else:
+                print(f"✗ Unexpected response from *OPC?: {response}")
+                return False
+            
+        except Exception as e:
+            # Restore original timeout in case of error
+            try:
+                self._instrument.timeout = original_timeout
+            except:
+                pass
+                
+            print(f"✗ Error waiting for operation completion: {e}")
+            if self.debug:
+                print(f"  Note: This may indicate a timeout after {timeout} seconds")
+                import traceback
+                traceback.print_exc()
+            return False
 
 class BKPrecision891(Instrument):
     def __init__(self, model: str, address: str = None, debug: bool = False):
@@ -1231,9 +2045,9 @@ if __name__ == "__main__":
 
     if resources:
         instrument_address = resources[0]
-        instrument = Instrument(model = '3102')
-        #instrument.debug = True  # Enable debug messages
-        
+        instrument = Instrument(model="Generic", address=instrument_address)
+        instrument.debug = True  # Enable debug messages
+
         if instrument.check_connection():
             print(f"Connected to: {instrument.address}")
             print(f"Device ID: {instrument.id}")
