@@ -776,33 +776,115 @@ class Bode100(Instrument):
             print(f"Error writing properties to Bode100: {e}")
             raise
         
-
     def read_measurement_data(self):
         """
-        Reads the measurement data from the Bode100 instrument.
+        Reads the measurement data from the Bode100 instrument with automatic header generation.
+        
+        The number of measurements per frequency depends on the current format setting:
+        - Single formats (MLIN, MLOG, PHAS, etc.): 1 measurement per frequency
+        - Dual formats (SLIN, SLOG, SCOM, etc.): 2 measurements per frequency
+        
+        Headers are automatically generated based on the current format:
+        - MLIN: ["Frequency (Hz)", "Magnitude (Linear)"]
+        - MLOG: ["Frequency (Hz)", "Magnitude (dB)"] 
+        - PHAS: ["Frequency (Hz)", "Phase (°)"]
+        - SLOG: ["Frequency (Hz)", "Magnitude (dB)", "Phase (°)"]
+        - SCOM: ["Frequency (Hz)", "Real", "Imaginary"]
+        - etc.
 
         Returns:
-            list: List of measurement data points as floats.
+            tuple: (headers, data) where:
+                   headers (list): Column headers with units
+                   data (list): List of measurement data rows
+                   Returns ([], []) on error.
         """
         if not self.is_connected:
             print("✗ ERROR: Instrument not connected. Cannot read measurement data.")
-            return []
+            return [], []
         
         try:
+            # Read frequency data
             frequency_response = self._instrument.query(":SENS:FREQ:DATA?")
             frequency_list = [float(x) for x in frequency_response.split(',')]
+            num_points = len(frequency_list)
             
-            # Read measurement data (combined magnitude and phase)
+            # Read measurement data
             measurement_response = self._instrument.query(":CALC:DATA:SDAT?")
             measurement_list = [float(x) for x in measurement_response.split(',')]
-            return frequency_list, measurement_list
+            
+            # Define format-specific headers
+            format_headers = {
+                # Single value formats
+                "GDEL": ["Frequency (Hz)", "Group Delay (s)"],
+                "IMAG": ["Frequency (Hz)", "Imaginary Part"],
+                "MLIN": ["Frequency (Hz)", "Magnitude (Linear)"],
+                "MLOG": ["Frequency (Hz)", "Magnitude (dB)"],
+                "PHAS": ["Frequency (Hz)", "Phase (°)"],
+                "REAL": ["Frequency (Hz)", "Real Part"],
+                "SWR": ["Frequency (Hz)", "SWR"],
+                "UPHA": ["Frequency (Hz)", "Unwrapped Phase (°)"],
+                # Dual value formats
+                "SLIN": ["Frequency (Hz)", "Magnitude (Linear)", "Phase (°)"],
+                "SLOG": ["Frequency (Hz)", "Magnitude (dB)", "Phase (°)"],
+                "SCOM": ["Frequency (Hz)", "Real Part", "Imaginary Part"],
+                "SMIT": ["Frequency (Hz)", "Resistance (Ω)", "Reactance (Ω)"],
+                "SADM": ["Frequency (Hz)", "Conductance (S)", "Susceptance (S)"]
+            }
+            
+            # Get headers for current format
+            if self._format not in format_headers:
+                raise ValueError(f"Unknown format '{self._format}'. Cannot generate headers.")
+            
+            header_row = format_headers[self._format]
+            is_dual_format = len(header_row) == 3  # Frequency + 2 data columns
+            
+            # Create data rows (without headers)
+            data_rows = []
+            
+            if is_dual_format:
+                # Dual format: 2 measurements per frequency
+                if len(measurement_list) != num_points * 2:
+                    raise ValueError(f"Expected {num_points * 2} measurements for dual format, got {len(measurement_list)}")
+                
+                data_1_list = measurement_list[0:num_points]         # First half
+                data_2_list = measurement_list[num_points:num_points*2]  # Second half
+                
+                # Add data rows
+                for frequency, data_1, data_2 in zip(frequency_list, data_1_list, data_2_list):
+                    data_row = [frequency, data_1, data_2]
+                    data_rows.append(data_row)
+                    
+                if self.debug:
+                    print(f"✓ Read {len(data_rows)} dual-format measurement points from Bode100")
+                    print(f"  Format: {self._format} (dual values per frequency)")
+                    print(f"  Headers: {header_row}")
+                    
+            else:
+                # Single format: 1 measurement per frequency
+                if len(measurement_list) != num_points:
+                    raise ValueError(f"Expected {num_points} measurements for single format, got {len(measurement_list)}")
+                
+                # Add data rows
+                for frequency, data_1 in zip(frequency_list, measurement_list):
+                    data_row = [frequency, data_1]
+                    data_rows.append(data_row)
+                    
+                if self.debug:
+                    print(f"✓ Read {len(data_rows)} single-format measurement points from Bode100")
+                    print(f"  Format: {self._format} (single value per frequency)")
+                    print(f"  Headers: {header_row}")
+            
+            if self.debug:
+                print(f"  Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
+
+            return header_row, data_rows
 
         except Exception as e:
-            print(f"Error reading measurement data from Bode100: {e}")
+            print(f"✗ Error reading measurement data from Bode100: {e}")
             if self.debug:
                 import traceback
                 traceback.print_exc()
-            return []
+            return [], []
         
     def read_properties(self):
         """
@@ -899,7 +981,7 @@ class Bode100(Instrument):
                 traceback.print_exc()
             return False
         
-    def read_calibration_file(self, filename):
+    def load_calibration_file(self, filename):
         """
         Reads and loads a calibration file into the instrument.
 
@@ -907,10 +989,6 @@ class Bode100(Instrument):
             filename (str): Name of the calibration file to be loaded.
         """
         try:
-            #Set the instrument parameter definition to impedance
-            self._instrument.write(':CALC:PAR:DEF Z') 
-            print("Setting parameter to Z: ", self._instrument.query('*OPC?'))  # Check operation complete
-
             # Construct the absolute file path and send the load command
             absolute_filename = os.path.join(os.getcwd(), filename)
             command = f':MEM:LOAD:CORR:FULL {filename}'
@@ -930,161 +1008,232 @@ class Bode100(Instrument):
             print(f"Error loading calibration file: {e}")
 
     def calibrate_open(self):
+        """
+        Execute an open calibration on the Bode100.
+        
+        This function performs an open calibration which is used to calibrate
+        the impedance measurement path with an open circuit. The open calibration
+        establishes the reference for impedance measurements by measuring the
+        characteristics of an open circuit (infinite impedance).
+        
+        The open calibration is one of the standard calibration steps for
+        accurate impedance measurements and is typically performed as part
+        of a full calibration sequence (Open, Short, Load).
+        
+        Usage:
+            Leave the measurement port (R1) open (not connected to anything),
+            then call this function.
+        
+        SCPI Commands:
+            :CALC:PAR:DEF Z - Set measurement parameter to impedance
+            :SENS:Z:METH TSER - Set impedance measurement method to test set
+            :SENS:CORR:FULL:OPEN:EXEC - Execute open calibration
+            *WAI - Wait for calibration to complete
+        
+        Returns:
+            None
+            
+        Raises:
+            Exception: If the calibration command fails to execute
+        """
         try:
             self._instrument.write(':CALC:PAR:DEF Z')
             self._instrument.write(':SENS:Z:METH TSER')
             self._instrument.write(':SENS:CORR:FULL:OPEN:EXEC')
             self._instrument.write('*WAI')
+            
+            if self.debug:
+                print("✓ Open calibration completed successfully")
+                
         except Exception as e:
-            print(f"Error execting short calibration : {e}")
+            print(f"✗ Error executing open calibration: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
 
     def calibrate_short(self):
+        """
+        Execute a short calibration on the Bode100.
+        
+        This function performs a short calibration which is used to calibrate
+        the impedance measurement path with a short circuit. The short calibration
+        establishes the reference for impedance measurements by measuring the
+        characteristics of a short circuit (zero impedance).
+        
+        The short calibration is one of the standard calibration steps for
+        accurate impedance measurements and is typically performed as part
+        of a full calibration sequence (Open, Short, Load).
+        
+        Usage:
+            Connect the measurement port (R1) to ground using a short circuit
+            (such as a BNC short or direct connection to ground), then call this function.
+        
+        SCPI Commands:
+            :CALC:PAR:DEF Z - Set measurement parameter to impedance
+            :SENS:Z:METH TSER - Set impedance measurement method to test set
+            :SENS:CORR:FULL:SHORT:EXEC - Execute short calibration
+            *WAI - Wait for calibration to complete
+        
+        Returns:
+            None
+            
+        Raises:
+            Exception: If the calibration command fails to execute
+        """
         try:
             self._instrument.write(':CALC:PAR:DEF Z')
             self._instrument.write(':SENS:Z:METH TSER')
             self._instrument.write(':SENS:CORR:FULL:SHORT:EXEC')
             self._instrument.write('*WAI')
+            
+            if self.debug:
+                print("✓ Short calibration completed successfully")
+                
         except Exception as e:
-            print(f"Error execting short calibration : {e}")
+            print(f"✗ Error executing short calibration: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
 
     def calibrate_load(self):
+        """
+        Execute a load calibration on the Bode100.
+        
+        This function performs a load calibration which is used to calibrate
+        the impedance measurement path with a known load impedance. The load
+        calibration establishes the reference for impedance measurements by
+        measuring the characteristics of a precision load resistor (typically 50Ω).
+        
+        The load calibration is one of the standard calibration steps for
+        accurate impedance measurements and is typically performed as the final
+        step in a full calibration sequence (Open, Short, Load).
+        
+        Usage:
+            Connect a precision load resistor (typically 50Ω) to the measurement
+            port (R1), then call this function. Use a high-quality, non-inductive
+            resistor for best accuracy.
+        
+        SCPI Commands:
+            :CALC:PAR:DEF Z - Set measurement parameter to impedance
+            :SENS:Z:METH TSER - Set impedance measurement method to test set
+            :SENS:CORR:FULL:LOAD:EXEC - Execute load calibration
+            *WAI - Wait for calibration to complete
+        
+        Returns:
+            None
+            
+        Raises:
+            Exception: If the calibration command fails to execute
+        """
         try:
             self._instrument.write(":CALC:PAR:DEF Z")
             self._instrument.write(":SENS:Z:METH TSER")
             self._instrument.write(":SENS:CORR:FULL:LOAD:EXEC")
             self._instrument.write("*WAI")
-        except Exception as e:
-            print(f"Error execting load calibration : {e}")
-    
-    def calculate_series_RC(self,magnitude, phase, frequency):
-        """
-        Calculate series resistance (R) and capacitance (C) from impedance magnitude, phase, and frequency.
-        
-        Args:
-            magnitude (float): Impedance magnitude |Z| in ohms.
-            phase (float): Phase angle in degrees.
-            frequency (float): Frequency in Hz.
-        
-        Returns:
-            tuple: (R, C) where R is resistance in ohms and C is capacitance in farads.
-        """
-        # Convert phase from degrees to radians
-        phase_radians = math.radians(phase)
-
-        # Calculate R (resistance)
-        R = magnitude * math.cos(phase_radians)
-
-        # Calculate X_C (capacitive reactance)
-        X_C = magnitude * math.sin(phase_radians)
-
-        # Avoid division by zero for frequency or X_C
-        if frequency <= 0 or X_C == 0:
-            raise ValueError("Frequency must be greater than 0 and X_C must not be zero.")
-
-        # Calculate C (capacitance)
-        C = 1 / (2 * math.pi * frequency * abs(X_C))
-
-        return R, C
-
-    def execute_impedance_sweep(self, measurement_method="P1R"):
-        """
-        Execute an impedance sweep measurement on the Bode100.
-        Must call configure_sweep() and configure_receivers() first.
-        
-        Args:
-            measurement_method (str, optional): Impedance measurement method. Default is "P1R".
-                                              Options: "P1R", "TSER", "TPAR", "RSER", "RPAR"
-        
-        Returns:
-            list: List of tuples containing (frequency, impedance_magnitude, impedance_phase, resistance, capacitance)
-                 for each measurement point. Returns None if an error occurs.
-        """
-        try:
-            # Configure measurement type and method
-            self.configure_measurement(measurement_type="IMPEDANCE", measurement_method=measurement_method)
-            
-            # Execute the single sweep
-            self._instrument.write(':INIT:IMM')       # Initiate measurement immediately
-            self._instrument.query('*OPC?')           # Wait for completion
-            
-            # Read frequency data
-            frequency_response = self._instrument.query(":SENS:FREQ:DATA?")
-            frequency_list = [float(x) for x in frequency_response.split(',')]
-            
-            # Read impedance data (magnitude and phase combined)
-            impedance_response = self._instrument.query(":CALC:DATA:SDAT?")
-            impedance_list = [float(x) for x in impedance_response.split(',')]
-            
-            # Calculate point count from frequency data length
-            point_count = len(frequency_list)
-            
-            # Split into magnitude and phase lists
-            magnitude_list = impedance_list[0:point_count]
-            phase_list = impedance_list[point_count:2*point_count]
-            
-            # Calculate R and C for each measurement point
-            sweep_results = []
-            for frequency, magnitude, phase in zip(frequency_list, magnitude_list, phase_list):
-                try:
-                    resistance, capacitance = self.calculate_series_RC(magnitude, phase, frequency)
-                    sweep_results.append((frequency, magnitude, phase, resistance, capacitance))
-                except ValueError as calc_error:
-                    # Handle calculation errors gracefully
-                    if self.debug:
-                        print(f"Calculation error at {frequency} Hz: {calc_error}")
-                    sweep_results.append((frequency, magnitude, phase, float('nan'), float('nan')))
             
             if self.debug:
-                print(f"Impedance sweep completed: {len(sweep_results)} points")
-                print(f"Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
-                print(f"Impedance range: {min(magnitude_list):.2f} Ω to {max(magnitude_list):.2f} Ω")
-                print(f"Phase range: {min(phase_list):.2f}° to {max(phase_list):.2f}°")
-            
-            return sweep_results
-            
+                print("✓ Load calibration completed successfully")
+                
         except Exception as e:
-            print(f"Error executing impedance sweep: {e}")
-            return None
+            print(f"✗ Error executing load calibration: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
 
-    def execute_gain_phase_sweep(self):
+    def calibrate_thru(self):
         """
-        Execute a single gain and phase sweep measurement on the Bode100.
-        Must call configure_sweep() and configure_receivers() first.
+        Execute a thru calibration on the Bode100.
         
-        Args:
-            measurement_method (str, optional): Gain/phase measurement method. Default is "R1R2".
+        This function performs a thru (through) calibration which is used to 
+        calibrate the transmission measurement path. The thru calibration 
+        establishes the reference for transmission measurements by connecting 
+        R1 and R2 directly together with a short cable or connector.
+        
+        The thru calibration is essential for accurate gain, phase, and 
+        transmission measurements as it removes the effects of cables and 
+        connectors from the measurement path.
+        
+        Usage:
+            Connect R1 and R2 together with a short, low-loss connection
+            (such as a short BNC cable or direct connector), then call this function.
         
         Returns:
-            list: List of tuples containing (frequency, gain_db, phase_deg) for each measurement point.
-                 Returns None if an error occurs.
+            None
+            
+        Raises:
+            Exception: If the calibration command fails to execute
         """
         try:
-            self.write_properties()  # Ensure properties are written to the instrument
-            self.read_properties()
+            # Set measurement parameter for transmission measurements
+            self._instrument.write(":CALC:PAR:DEF TRAN")
+            
+            # Execute the thru calibration
+            self._instrument.write(":SENS:CORR:FULL:THRU:EXEC")
+            
+            # Wait for calibration to complete
+            self._instrument.write("*WAI")
+            
+            if self.debug:
+                print("✓ Thru calibration completed successfully")
+                
+        except Exception as e:
+            print(f"✗ Error executing thru calibration: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
+
+    def execute_sweep(self):
+        """
+        Execute a frequency sweep measurement on the Bode100 with current settings.
+        
+        This generic function works with any measurement type (GAINphase, Z, S11, S21, etc.)
+        and format (SLOG, SLIN, MLOG, PHAS, SCOM, etc.) configured on the instrument.
+        
+        Returns:
+            tuple: (headers, data_rows) where:
+                   - headers: List of column headers
+                   - data_rows: List of measurement data rows
+            Returns None if an error occurs.
+        """
+        try:
+            self.write_properties()
             self.trigger_single()
             self.wait_for_operation_to_complete()
-            frequency_list, measurement_list = self.read_measurement_data()
             
-            # Parse interleaved magnitude and phase data (per official documentation pattern)
-            num_points = len(frequency_list)
-            gain_list = measurement_list[0:num_points]          # First half: magnitude values in dB
-            phase_list = measurement_list[num_points:num_points*2]  # Second half: phase values in degrees
+            # Read measurement data using the structured function
+            headers, data_rows = self.read_measurement_data()
             
-            # Combine into final results list
-            sweep_results = []
-            for frequency, gain, phase in zip(frequency_list, gain_list, phase_list):
-                sweep_results.append((frequency, gain, phase))
+            # Validate that we have data
+            if not headers or not data_rows:
+                print("✗ ERROR: No measurement data received from instrument")
+                return None
+            
+            num_columns = len(headers)
+            num_points = len(data_rows)
             
             if self.debug:
-                print(f"Gain/phase sweep completed: {len(sweep_results)} points")
-                print(f"Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
-                print(f"Gain range: {min(gain_list):.2f} dB to {max(gain_list):.2f} dB")
-                print(f"Phase range: {min(phase_list):.2f}° to {max(phase_list):.2f}°")
+                print(f"✓ Sweep completed: {num_points} points, {num_columns} columns")
+                print(f"  Measurement Type: {self._measurement_type}")
+                print(f"  Format: {self._format}")
+                print(f"  Headers: {headers}")
+                
+                # Extract frequency range for debug
+                frequency_list = [row[0] for row in data_rows]
+                print(f"  Frequency range: {min(frequency_list):.1f} Hz to {max(frequency_list):.1f} Hz")
+                
+                # Show range for each measurement column
+                for i in range(1, num_columns):
+                    data_column = [row[i] for row in data_rows]
+                    unit = headers[i].split('(')[-1].rstrip(')') if '(' in headers[i] else ''
+                    print(f"  {headers[i]} range: {min(data_column):.2f} to {max(data_column):.2f} {unit}")
             
-            return sweep_results
+            return headers, data_rows
             
         except Exception as e:
-            print(f"Error executing gain/phase sweep: {e}")
+            print(f"✗ Error executing sweep: {e}")
+            if self.debug:
+                import traceback
+                traceback.print_exc()
             return None
 
     def print_configuration(self):

@@ -23,7 +23,6 @@ History:
 
 import sys
 import os
-import csv
 from datetime import datetime
 
 # Add the root project directory and Drivers directory to the Python path
@@ -33,24 +32,7 @@ sys.path.append(project_root)
 sys.path.append(drivers_dir)
 
 from Drivers.InstrumentDriver import Bode100
-
-def save_data_to_csv(data, filename):
-    """Save measurement data to CSV file in the same directory as the script."""
-    try:
-        # Get the directory where this script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        full_path = os.path.join(script_dir, filename)
-        
-        with open(full_path, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            # Write header
-            writer.writerow(['Frequency (Hz)', 'Gain (dB)', 'Phase (degrees)'])
-            # Write data
-            for frequency, gain, phase in data:
-                writer.writerow([frequency, gain, phase])
-        print(f"✓ Data saved to: {full_path}")
-    except Exception as e:
-        print(f"⚠ Warning: Could not save data to CSV: {e}")
+from Drivers.Utilites import save_data_to_csv
 
 def main():
     """Main function to perform Bode100 gain/phase measurement."""
@@ -67,7 +49,7 @@ def main():
     
     # Measurement parameters
     start_frequency = 10.0      # 10 Hz
-    stop_frequency = 1000000.0  # 1 MHz
+    stop_frequency = 1000000.0  # 1 MHzn
     point_count = 401           # 401 points for good resolution
     sweep_type = "LOG"          # Logarithmic sweep
     bandwidth = "3000Hz"        # Measurement bandwidth
@@ -113,14 +95,35 @@ def main():
             bode.trigger_source = "BUS"  # Trigger source set to BUS
             bode.initiate_continuous = True 
 
-            # Print the start message
+            # Write the properties to the instrument
+            bode.write_properties()
+
+ 
+            # Prompt user before executing the sweep
+            print("\nA gain/phase measurement sweep is about to be performed.")
+            print("Do you want to continue? (y/n): ", end="")
+            
+            user_response = input().strip().lower()
+            
+            if user_response != 'y':
+                print("Measurement cancelled. Exiting program.")
+                sys.exit(0)
+
             print("Starting measurement...")
             
             # Execute the measurement using the new simplified function
-            results = bode.execute_gain_phase_sweep()
-            if results:
+            sweep_result = bode.execute_sweep()
+            
+            if sweep_result:
+                headers, data_rows = sweep_result
                 print(f"\n✓ Measurement completed successfully!")
-                print(f"✓ Collected {len(results)} data points")
+                print(f"✓ Collected {len(data_rows)} data points")
+                print(f"✓ Headers: {headers}")
+                
+                # Convert to the expected format for backward compatibility
+                results = []
+                for row in data_rows:
+                    results.append(tuple(row))
                 
                 # Display measurement summary
                 frequencies = [point[0] for point in results]
@@ -141,12 +144,14 @@ def main():
                 print(f"  Minimum Gain: {gains[min_gain_idx]:.2f} dB at {frequencies[min_gain_idx]:.1f} Hz")
 
                 # Save data to CSV file
+                script_dir = os.path.dirname(os.path.abspath(__file__))
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
                 csv_filename = f"bode100_gain_phase_{timestamp}.csv"
-                #save_data_to_csv(results, csv_filename)
-                
+                full_path = os.path.join(script_dir, csv_filename)
+                save_data_to_csv(headers, data_rows, full_path)
+
                 # Display sample data points
-                print(f"\nSample Data Points (first 5):")
+                print(f"\nSample Data Points:")
                 print("  Frequency (Hz)    Gain (dB)    Phase (°)")
                 print("  " + "-" * 40)
                 # Display all the data points
