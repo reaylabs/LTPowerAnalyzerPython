@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.4] - 2025-10-19
+### Added
+- Updated LNADriver and examples
+
 ## [0.0.3] - 2025-10-18
 ### Added
 - Bode GainPhase complete
