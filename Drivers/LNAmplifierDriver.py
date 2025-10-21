@@ -65,6 +65,8 @@ class LNAmplifier(SerialDevice):
         self._cmdSetEEPROMBaseAddress = "16"
         self._cmdGetEEPROMAddress = "17"
         self._cmdSetEEPROMFloatPage = "18"
+        self._cmdGetEEPROMFloatPage = "19"
+        self._cmdGetEEPROMDataPageCount = "20"
 
         #Add error descriptions
         #self.device_errors.add_error_description(5, "Communication Timeout")
@@ -100,6 +102,139 @@ class LNAmplifier(SerialDevice):
             print(f"Get EEPROM Address Exception: {e}")
             return None
 
+    def get_eeprom_data_page_count(self, port_index):
+        """
+        Gets the number of data pages in EEPROM.
+        
+        Args:
+            port_index (int): The index of the port to use
+            
+        Returns:
+            int: The number of data pages in EEPROM, or None if an error occurs
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                # Send the get EEPROM data page count command
+                self.send_command(self._cmdGetEEPROMDataPageCount, port_index)
+                
+                # Read the page count value from the device
+                page_count = self.read_value(True, port_index)
+                
+                if self.debug:
+                    print(f"Get EEPROM data page count from port {port_index}: {page_count}")
+                
+                return page_count
+                
+            elif self.debug:
+                print(f"Get EEPROM Data Page Count: Device not ready on port {port_index}")
+                return None
+                
+        except Exception as e:
+            print(f"Get EEPROM Data Page Count Exception: {e}")
+            return None
+
+    def get_eeprom_dataset(self, data_index, port_index):
+            """
+            Read an array of float values from EEPROM using page-based operations.
+            
+            This function handles the complete process of reading a dataset:
+            1. Reads the current point count from the LNA
+            2. Gets the required page count from the LNA  
+            3. Sets the EEPROM base address using the data_index
+            4. Reads all pages of data using get_eeprom_float_page
+            5. Returns an array of point_count float values
+            
+            Args:
+                data_index (int): EEPROM data index (0-3) for base address
+                port_index (int): The index of the port to use
+                
+            Returns:
+                list: Array of float values (length = point_count) or None if error
+            """
+            try:
+                if not self.port_ok(port_index):
+                    if self.debug:
+                        print(f"Get EEPROM Dataset: Device not ready on port {port_index}")
+                    return None
+                
+                # Validate inputs
+                if not isinstance(data_index, int) or data_index < 0 or data_index > 3:
+                    if self.debug:
+                        print(f"Get EEPROM Dataset: Invalid data_index {data_index} (must be 0-3)")
+                    return None
+                
+                # Step 1: Read point count from LNA
+                point_count = self.get_point_count(port_index)
+                if point_count is None:
+                    if self.debug:
+                        print("Get EEPROM Dataset: Failed to get point count")
+                    return None
+                
+                point_count = int(point_count) if isinstance(point_count, str) else point_count
+                
+                if self.debug:
+                    print(f"Point count from LNA: {point_count}")
+                
+                # Step 2: Set EEPROM base address using data_index
+                if not self.set_eeprom_base_address(data_index, port_index):
+                    if self.debug:
+                        print(f"Get EEPROM Dataset: Failed to set base address for data_index {data_index}")
+                    return None
+                
+                # Step 3: Get page count from LNA
+                page_count = self.get_eeprom_data_page_count(port_index)
+                if page_count is None:
+                    if self.debug:
+                        print("Get EEPROM Dataset: Failed to get page count")
+                    return None
+                
+                page_count = int(page_count) if isinstance(page_count, str) else page_count
+                
+                if self.debug:
+                    print(f"Page count from LNA: {page_count}")
+                
+                # Step 4: Read pages of data using get_eeprom_float_page
+                dataset = []
+                successful_pages = 0
+                
+                for page_num in range(page_count):
+                    # Read the page using get_eeprom_float_page
+                    page_data = self.get_eeprom_float_page(port_index)
+                    
+                    if page_data is not None and len(page_data) == 8:
+                        successful_pages += 1
+                        
+                        # Add values from this page to the dataset
+                        for i in range(8):
+                            value_index = page_num * 8 + i
+                            if value_index < point_count:
+                                dataset.append(page_data[i])
+                            # Stop adding values once we reach point_count
+                        
+                        if self.debug:
+                            print(f"Page {page_num + 1}/{page_count} read successfully")
+                    else:
+                        if self.debug:
+                            print(f"Failed to read page {page_num + 1}/{page_count}")
+                        # Return None if any page fails to read
+                        return None
+                
+                # Verify we got the expected number of values
+                if len(dataset) != point_count:
+                    if self.debug:
+                        print(f"Get EEPROM Dataset: Expected {point_count} values, got {len(dataset)}")
+                    return None
+                
+                if self.debug:
+                    print(f"Get EEPROM Dataset: Successfully read {len(dataset)} values from data_index {data_index}")
+                
+                return dataset
+                
+            except Exception as e:
+                if self.debug:
+                    print(f"Get EEPROM Dataset Exception: {e}")
+                return None
+
     def get_eeprom_float_value(self, address, port_index):
         """
         Gets a float value from EEPROM at the specified address.
@@ -133,6 +268,59 @@ class LNAmplifier(SerialDevice):
                 
         except Exception as e:
             print(f"Get EEPROM Float Value Exception: {e}")
+            return None
+
+    def get_eeprom_float_page(self, port_index):
+        """
+        Gets a page of 8 float values from EEPROM.
+        The EEPROM address is handled automatically by the device.
+        
+        Args:
+            port_index (int): The index of the port to use
+            
+        Returns:
+            list: List of 8 float values from EEPROM, or None if an error occurs
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                # Send the get EEPROM float page command
+                self.send_command(self._cmdGetEEPROMFloatPage, port_index)
+                
+                # Read the comma-delimited string from the device
+                response = self.read_value(True, port_index)
+                
+                if response is None:
+                    if self.debug:
+                        print(f"Get EEPROM Float Page: No response from port {port_index}")
+                    return None
+                
+                # Parse the comma-delimited string into float values
+                try:
+                    # Split by comma and convert each to float
+                    float_values = [float(val.strip()) for val in response.split(',')]
+                    
+                    # Validate that we got exactly 8 values
+                    if len(float_values) != 8:
+                        if self.debug:
+                            print(f"Get EEPROM Float Page: Expected 8 values, got {len(float_values)}")
+                        return None
+                    
+                    if self.debug:
+                        print(f"Get EEPROM float page from port {port_index}: {float_values}")
+                    
+                    return float_values
+                    
+                except (ValueError, AttributeError) as parse_error:
+                    if self.debug:
+                        print(f"Get EEPROM Float Page: Parse error - {parse_error}")
+                    return None
+                
+            elif self.debug:
+                print(f"Get EEPROM Float Page: Device not ready on port {port_index}")
+                return None
+                
+        except Exception as e:
+            print(f"Get EEPROM Float Page Exception: {e}")
             return None
 
     def get_filter(self, port_index):
@@ -260,6 +448,111 @@ class LNAmplifier(SerialDevice):
             print(f"Set EEPROM Base Address Exception: {e}")
             return False
 
+    def set_eeprom_dataset(self, float_values, data_index, port_index):
+        """
+        Store an array of float values in EEPROM using page-based operations.
+        
+        This function handles the complete process of storing a dataset:
+        1. Reads the current point count from the LNA
+        2. Gets the required page count from the LNA
+        3. Sets the EEPROM base address using the data_index
+        4. Writes all pages of data using set_eeprom_float_page
+        
+        Args:
+            float_values (list): Array of float values to store
+            data_index (int): EEPROM data index (0-3) for base address
+            port_index (int): The index of the port to use
+            
+        Returns:
+            bool: True if all data stored successfully, False otherwise
+        """
+        try:
+            if not self.port_ok(port_index):
+                if self.debug:
+                    print(f"Set EEPROM Dataset: Device not ready on port {port_index}")
+                return False
+            
+            # Validate inputs
+            if not isinstance(float_values, list) or len(float_values) == 0:
+                if self.debug:
+                    print("Set EEPROM Dataset: Invalid float_values array")
+                return False
+            
+            if not isinstance(data_index, int) or data_index < 0 or data_index > 3:
+                if self.debug:
+                    print(f"Set EEPROM Dataset: Invalid data_index {data_index} (must be 0-3)")
+                return False
+            
+            # Step 1: Read point count from LNA
+            point_count = self.get_point_count(port_index)
+            if point_count is None:
+                if self.debug:
+                    print("Set EEPROM Dataset: Failed to get point count")
+                return False
+            
+            point_count = int(point_count) if isinstance(point_count, str) else point_count
+            
+            if self.debug:
+                print(f"Point count from LNA: {point_count}")
+            
+            # Step 2: Set EEPROM base address using data_index
+            if not self.set_eeprom_base_address(data_index, port_index):
+                if self.debug:
+                    print(f"Set EEPROM Dataset: Failed to set base address for data_index {data_index}")
+                return False
+            
+            # Step 3: Get page count from LNA
+            page_count = self.get_eeprom_data_page_count(port_index)
+            if page_count is None:
+                if self.debug:
+                    print("Set EEPROM Dataset: Failed to get page count")
+                return False
+            
+            page_count = int(page_count) if isinstance(page_count, str) else page_count
+            
+            if self.debug:
+                print(f"Page count from LNA: {page_count}")
+            
+            # Step 4: Write pages of data using set_eeprom_float_page
+            successful_pages = 0
+            
+            for page_num in range(page_count):
+                # Prepare 8 float values for this page
+                page_values = []
+                for i in range(8):
+                    value_index = page_num * 8 + i
+                    if value_index < len(float_values):
+                        page_values.append(float_values[value_index])
+                    else:
+                        # Pad with zeros if we exceed data count
+                        page_values.append(0.0)
+                
+                # Write the page using set_eeprom_float_page
+                if self.set_eeprom_float_page(page_values, port_index):
+                    successful_pages += 1
+                    if self.debug:
+                        print(f"Page {page_num + 1}/{page_count} written successfully")
+                else:
+                    if self.debug:
+                        print(f"Failed to write page {page_num + 1}/{page_count}")
+            
+            # Check if all pages were written successfully
+            success = successful_pages == page_count
+            
+            if self.debug:
+                print(f"Set EEPROM Dataset: {successful_pages}/{page_count} pages written successfully")
+                if success:
+                    print(f"Dataset stored successfully in data_index {data_index}")
+                else:
+                    print(f"Dataset storage partially failed ({page_count - successful_pages} pages failed)")
+            
+            return success
+            
+        except Exception as e:
+            if self.debug:
+                print(f"Set EEPROM Dataset Exception: {e}")
+            return False
+
     def set_eeprom_float_page(self, float_values, port_index):
         """
         Sets a page of 8 float values in EEPROM using comma-delimited string.
@@ -350,7 +643,7 @@ class LNAmplifier(SerialDevice):
             print(f"Set EEPROM Float Value Exception: {e}")
             return False
 
-    def set_filter(self, port_index, filter_value):
+    def set_filter(self, filter_value,port_index):
         """
         Sets the filter value for the specified port.
         
@@ -433,3 +726,6 @@ class LNAmplifier(SerialDevice):
                 print(f"Set Test Mode: Device not ready on port {port_index}")  # Debug message if the device is not ready
         except Exception as e:
             print(f"Set Test Mode Exception: {e}")  # Catch and print any exceptions that occur
+
+
+  

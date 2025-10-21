@@ -1,5 +1,10 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.5] - 2025-10-20
+### Added
+- Updated LNADriver and examples
+- Read and Write to EEPROM working
+
 ## [0.0.4] - 2025-10-19
 ### Added
 - Updated LNADriver and examples
