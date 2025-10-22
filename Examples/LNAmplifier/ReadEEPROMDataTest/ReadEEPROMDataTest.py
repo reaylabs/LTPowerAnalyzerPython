@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-LNAmplifier EEPROM Data Read Test
+LNAmplifier EEPROM Data Read Test with Frequency Response Analysis
 
 This script demonstrates reading calibration data from LNAmplifier EEPROM
 using the high-level get_eeprom_dataset function. It connects to the LNAmplifier
@@ -17,6 +17,13 @@ Output:
 - Creates a single CSV file with columns: Frequency_Hz, Filter1_Gain_dB, Filter2_Gain_dB, Filter3_Gain_dB
 - Each row contains one frequency point with corresponding gains for all three filters
 - Missing data is marked as "N/A" in the CSV
+- Displays Frequency Response Analysis Summary with performance metrics and bandwidth measurements
+
+Analysis Features:
+- Gain statistics (min, max, mean, range) for each filter
+- Gain flatness analysis (maximum deviation, RMS deviation)
+- Bandwidth measurements (-1dB and -3dB bandwidth)
+- Comparative summary table for easy filter performance comparison
 
 Usage:
     python ReadEEPROMDataTest.py
@@ -27,6 +34,7 @@ Requirements:
 
 History:
     10-20-2025  v1.0.0 - Initial EEPROM read test version with CSV output
+    10-21-2025  v1.1.0 - Added comprehensive frequency response analysis with summary tables
 """
 
 import sys
@@ -42,24 +50,6 @@ sys.path.append(project_root)
 sys.path.append(drivers_dir)
 
 from Drivers.LNAmplifierDriver import LNAmplifier
-
-def display_dataset_summary(data, data_name):
-    """
-    Display a summary of the dataset.
-    
-    Args:
-        data (list): Array of float values
-        data_name (str): Description of the data
-    """
-    if data is None or len(data) == 0:
-        print(f"  {data_name}: No data available")
-        return
-    
-    print(f"  {data_name}:")
-    print(f"    Count: {len(data)} values")
-    print(f"    Range: {min(data):.6f} to {max(data):.6f}")
-    print(f"    First 3 values: {data[:3]}")
-    print(f"    Last 3 values: {data[-3:]}")
 
 def save_dataset_to_file(data, filename, data_name):
     """
@@ -155,11 +145,6 @@ def main():
                 datasets[data_index] = None
                 print(f"✗ Failed to read {data_name}")
         
-        # Display summary of all datasets
-        print(f"\n--- Dataset Summary ---")
-        for data_index, data_name in dataset_info:
-            display_dataset_summary(datasets[data_index], data_name)
-        
         # Check for data consistency
         print(f"\n--- Data Consistency Check ---")
         frequency_data = datasets[0]
@@ -233,11 +218,11 @@ def main():
         except Exception as e:
             print(f"✗ Failed to create CSV file: {e}")
         
-        # Display comprehensive frequency response analysis for all filters
+        # Display frequency response analysis summary
         frequencies = datasets[0]  # data_index 0
         
         if frequencies is not None:
-            print(f"\n--- Comprehensive Frequency Response Analysis ---")
+            print(f"\n--- Frequency Response Analysis Summary ---")
             
             # Analyze each filter dataset
             filter_analyses = []
@@ -246,17 +231,11 @@ def main():
                 gain_data = datasets[filter_num]  # data_index 1, 2, 3
                 
                 if gain_data is not None:
-                    print(f"\n=== Filter {filter_num} Analysis ===")
-                    
                     # Basic statistics
                     min_gain = min(gain_data)
                     max_gain = max(gain_data)
                     mean_gain = sum(gain_data) / len(gain_data)
                     gain_range = max_gain - min_gain
-                    
-                    # Find indices of key points
-                    min_gain_idx = gain_data.index(min_gain)
-                    max_gain_idx = gain_data.index(max_gain)
                     
                     # Calculate gain flatness (deviation from mean)
                     gain_deviations = [abs(gain - mean_gain) for gain in gain_data]
@@ -287,32 +266,7 @@ def main():
                     if len(frequencies_above_1db) >= 2:
                         bandwidth_1db = max(frequencies_above_1db) - min(frequencies_above_1db)
                     
-                    # Display analysis results
-                    print(f"Frequency Range: {min(frequencies):.1f} Hz to {max(frequencies)/1e6:.3f} MHz")
-                    print(f"Data Points: {len(gain_data)}")
-                    
-                    print(f"\nGain Statistics:")
-                    print(f"  Minimum Gain: {min_gain:.3f} dB at {frequencies[min_gain_idx]/1e3:.1f} kHz")
-                    print(f"  Maximum Gain: {max_gain:.3f} dB at {frequencies[max_gain_idx]/1e3:.1f} kHz")
-                    print(f"  Mean Gain: {mean_gain:.3f} dB")
-                    print(f"  Gain Range: {gain_range:.3f} dB")
-                    
-                    print(f"\nGain Flatness:")
-                    print(f"  Maximum Deviation: ±{max_deviation:.3f} dB")
-                    print(f"  RMS Deviation: {rms_deviation:.3f} dB")
-                    
-                    print(f"\nBandwidth Analysis:")
-                    if bandwidth_1db:
-                        print(f"  -1dB Bandwidth: {bandwidth_1db/1e6:.3f} MHz")
-                    else:
-                        print(f"  -1dB Bandwidth: Not measurable (gain never drops 1dB below max)")
-                    
-                    if bandwidth_3db:
-                        print(f"  -3dB Bandwidth: {bandwidth_3db/1e6:.3f} MHz")
-                    else:
-                        print(f"  -3dB Bandwidth: Not measurable (gain never drops 3dB below max)")
-                    
-                    # Store analysis for comparison
+                    # Store analysis for summary table
                     filter_analyses.append({
                         'filter_num': filter_num,
                         'min_gain': min_gain,
@@ -324,34 +278,31 @@ def main():
                         'bandwidth_1db': bandwidth_1db,
                         'bandwidth_3db': bandwidth_3db
                     })
-                    
-                else:
-                    print(f"\n=== Filter {filter_num} Analysis ===")
-                    print(f"✗ No gain data available for Filter {filter_num}")
             
-            # Compare filters if we have multiple datasets
-            if len(filter_analyses) >= 2:
-                print(f"\n--- Filter Comparison Summary ---")
+            # Display summary table if we have filter data
+            if filter_analyses:
+                print(f"\nFrequency Range: {min(frequencies):.1f} Hz to {max(frequencies)/1e6:.3f} MHz")
+                print(f"Data Points: {len(gain_data)} per filter")
                 
-                # Create comparison table
-                print(f"{'Metric':<25} ", end="")
+                # Create summary table
+                print(f"\n{'Metric':<20} ", end="")
                 for analysis in filter_analyses:
                     print(f"Filter {analysis['filter_num']:<10}", end="")
                 print()
-                print("-" * (25 + 15 * len(filter_analyses)))
+                print("-" * (20 + 15 * len(filter_analyses)))
                 
-                # Compare key metrics
+                # Key performance metrics
                 metrics = [
-                    ('Max Gain (dB)', 'max_gain', '.3f'),
-                    ('Min Gain (dB)', 'min_gain', '.3f'),
-                    ('Mean Gain (dB)', 'mean_gain', '.3f'),
-                    ('Gain Range (dB)', 'gain_range', '.3f'),
-                    ('Max Deviation (dB)', 'max_deviation', '.3f'),
-                    ('RMS Deviation (dB)', 'rms_deviation', '.3f'),
+                    ('Max Gain (dB)', 'max_gain', '.2f'),
+                    ('Min Gain (dB)', 'min_gain', '.2f'),
+                    ('Mean Gain (dB)', 'mean_gain', '.2f'),
+                    ('Gain Range (dB)', 'gain_range', '.2f'),
+                    ('Max Dev (dB)', 'max_deviation', '.3f'),
+                    ('RMS Dev (dB)', 'rms_deviation', '.3f'),
                 ]
                 
                 for metric_name, key, fmt in metrics:
-                    print(f"{metric_name:<25} ", end="")
+                    print(f"{metric_name:<20} ", end="")
                     for analysis in filter_analyses:
                         value = analysis.get(key)
                         if value is not None:
@@ -361,9 +312,12 @@ def main():
                             print(f"{'N/A':<15}", end="")
                     print()
                 
-                # Bandwidth comparison (convert to MHz)
-                print(f"{'Bandwidth Metrics':<25}")
-                print("-" * (25 + 15 * len(filter_analyses)))
+                # Bandwidth metrics
+                print(f"\n{'Bandwidth':<20} ", end="")
+                for analysis in filter_analyses:
+                    print(f"Filter {analysis['filter_num']:<10}", end="")
+                print()
+                print("-" * (20 + 15 * len(filter_analyses)))
                 
                 bw_metrics = [
                     ('-1dB BW (MHz)', 'bandwidth_1db'),
@@ -371,14 +325,17 @@ def main():
                 ]
                 
                 for metric_name, key in bw_metrics:
-                    print(f"{metric_name:<25} ", end="")
+                    print(f"{metric_name:<20} ", end="")
                     for analysis in filter_analyses:
                         value = analysis.get(key)
                         if value is not None:
-                            print(f"{value/1e6:.3f}{'':>9}", end="")
+                            print(f"{value/1e6:.2f}{'':>10}", end="")
                         else:
                             print(f"{'N/A':<15}", end="")
                     print()
+                    
+            else:
+                print("✗ No gain data available for analysis")
         
         else:
             print(f"\n✗ Cannot perform frequency response analysis: No frequency data available")

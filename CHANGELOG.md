@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.6] - 2025-10-21
+### Added
+- LNANoiseDensity.py working.
+
 ## [0.0.5] - 2025-10-20
 ### Added
 - Updated LNADriver and examples
