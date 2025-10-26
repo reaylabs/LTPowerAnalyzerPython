@@ -1,5 +1,10 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.7] - 2025-10-26
+### Added
+- Ability to set LNANoiseDensity plot name
+- LTC83401 6Mhz noise plot
+
 ## [0.0.6] - 2025-10-21
 ### Added
 - LNANoiseDensity.py working.

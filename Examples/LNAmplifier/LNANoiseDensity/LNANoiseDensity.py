@@ -62,47 +62,52 @@ sys.path.insert(0, drivers_dir)
 from Drivers.LNAmplifierDriver import LNAmplifier
 
 
-def extract_eeprom_data(csv_file_path):
+def correct_noise_density_spikes(noise_data, frequency_data, spike_threshold=2.0, window_size=5):
     """
-    Extract EEPROM calibration data from CSV file.
-    Returns (eeprom_frequencies, eeprom_gains) or (None, None) if not found.
-    """
-    eeprom_frequencies = []
-    eeprom_gains = []
+    Correct amplitude spikes in noise density data using median filtering of surrounding points.
     
-    try:
-        with open(csv_file_path, 'r') as file:
-            lines = file.readlines()
+    Args:
+        noise_data (list): List of noise density values in V/√Hz
+        frequency_data (list): List of corresponding frequency values in Hz
+        spike_threshold (float): Minimum ratio for spike detection (default: 2.0)
+        window_size (int): Number of surrounding points to use for median calculation (default: 5)
+    
+    Returns:
+        tuple: (corrected_noise_data, correction_log)
+    """
+    if not noise_data or len(noise_data) < window_size * 2 + 1:
+        return noise_data, []
+    
+    corrected_data = noise_data.copy()
+    correction_log = []
+    
+    for i in range(window_size, len(noise_data) - window_size):
+        current_val = noise_data[i]
+        
+        # Get surrounding values (excluding current point)
+        left_vals = noise_data[i-window_size:i]
+        right_vals = noise_data[i+1:i+window_size+1]
+        surrounding_vals = left_vals + right_vals
+        
+        # Calculate ratio to median of surrounding values
+        median_surrounding = np.median(surrounding_vals)
+        if median_surrounding > 0:
+            ratio = current_val / median_surrounding
             
-        # Find the EEPROM data section
-        eeprom_section = False
-        for line in lines:
-            line = line.strip()
-            if "# EEPROM Calibration Data" in line:
-                eeprom_section = True
-                continue
-            elif eeprom_section and line.startswith('#'):
-                continue  # Skip header lines
-            elif eeprom_section and not line.startswith('#') and ',' in line:
-                # Parse EEPROM data
-                parts = line.split(',')
-                if len(parts) >= 2:
-                    try:
-                        freq = float(parts[0])
-                        gain = float(parts[1])
-                        eeprom_frequencies.append(freq)
-                        eeprom_gains.append(gain)
-                    except ValueError:
-                        continue
-                        
-        if eeprom_frequencies and eeprom_gains:
-            return np.array(eeprom_frequencies), np.array(eeprom_gains)
-        else:
-            return None, None
-            
-    except Exception as e:
-        print(f"Warning: Could not extract EEPROM data: {e}")
-        return None, None
+            # Check if this is a spike
+            if ratio >= spike_threshold:
+                # Replace with median of surrounding values
+                corrected_data[i] = median_surrounding
+                
+                correction_log.append({
+                    'index': i,
+                    'frequency': frequency_data[i] if frequency_data else i,
+                    'original_noise': noise_data[i],
+                    'corrected_noise': median_surrounding,
+                    'ratio': ratio
+                })
+    
+    return corrected_data, correction_log
 
 def extract_measurement_parameters(csv_file_path):
     """
@@ -129,9 +134,14 @@ def extract_measurement_parameters(csv_file_path):
         print(f"Warning: Could not extract parameters: {e}")
     return params
 
-def plot_noise_density(csv_file_path):
+def plot_noise_density(csv_file_path, y_min=None, y_max=None, plot_title=None):
     """
     Create log-log plots of noise density vs frequency from the specified CSV file.
+    
+    Args:
+        csv_file_path (str): Path to the CSV file containing measurement data
+        y_min (float, optional): Minimum y-axis limit for plots
+        y_max (float, optional): Maximum y-axis limit for plots
     """
     print(f"📊 Creating plots from: {os.path.basename(csv_file_path)}")
     
@@ -139,15 +149,15 @@ def plot_noise_density(csv_file_path):
         # Extract measurement parameters from CSV comments
         params = extract_measurement_parameters(csv_file_path)
         
-        # Extract EEPROM calibration data
-        eeprom_frequencies, eeprom_gains = extract_eeprom_data(csv_file_path)
+        # EEPROM data is no longer saved to CSV, so set to None
+        eeprom_frequencies, eeprom_gains = None, None
         
-        # Load the CSV data, stopping at EEPROM section
+        # Load the CSV data
         measurement_data = []
         with open(csv_file_path, 'r') as file:
             lines = file.readlines()
         
-        # Find measurement data section (skip comments, stop at EEPROM section)
+        # Find measurement data section (skip comments)
         header_found = False
         for line in lines:
             line = line.strip()
@@ -159,12 +169,9 @@ def plot_noise_density(csv_file_path):
                 header = line.split(',')
                 continue
             elif header_found and ',' in line and not line.startswith('#'):
-                # Check if this line has 4 columns (measurement data) vs 2 columns (EEPROM data)
+                # All non-comment lines after header are measurement data
                 parts = line.split(',')
-                if len(parts) == 4:  # Measurement data has 4 columns
-                    measurement_data.append(parts)
-                elif len(parts) == 2:  # EEPROM data has 2 columns, stop here
-                    break
+                measurement_data.append(parts)
         
         # Convert to pandas DataFrame
         df = pd.DataFrame(measurement_data, columns=header)
@@ -176,54 +183,92 @@ def plot_noise_density(csv_file_path):
         
         # Extract data for plotting
         frequency = df.iloc[:, 0].values  # First column: Frequency (Hz)
-        measured_noise = df.iloc[:, 1].values  # Second column: Measured Noise Density (V/√Hz)
         
-        # Check if we have LNA input noise data (4th column)
-        has_lna_input_noise = len(df.columns) >= 4 and not df.iloc[:, 3].isna().all()
+        # Check if measured noise data is included (2nd column)
+        has_measured_noise = len(df.columns) >= 2 and 'measured_noise_density' in df.columns
         
-        if has_lna_input_noise:
-            lna_gain_db = df.iloc[:, 2].values  # Third column: LNA Gain (dB)
-            lna_input_noise = df.iloc[:, 3].values  # Fourth column: LNA Input Noise Density (V/√Hz)
+        if has_measured_noise:
+            measured_noise = df.iloc[:, 1].values  # Second column: Measured Noise Density (V/√Hz)
+            # LNA input noise is in 3rd column when measured noise is included
+            has_lna_input_noise = len(df.columns) >= 3 and not df.iloc[:, 2].isna().all()
+            if has_lna_input_noise:
+                lna_input_noise = df.iloc[:, 2].values  # Third column: LNA Input Noise Density (V/√Hz)
+        else:
+            # When measured noise is not included, LNA input noise is in 2nd column
+            has_lna_input_noise = len(df.columns) >= 2 and not df.iloc[:, 1].isna().all()
+            if has_lna_input_noise:
+                lna_input_noise = df.iloc[:, 1].values  # Second column: LNA Input Noise Density (V/√Hz)
         
         # Remove any NaN or zero values for log plotting
-        valid_indices = (frequency > 0) & (measured_noise > 0) & ~np.isnan(frequency) & ~np.isnan(measured_noise)
+        if has_measured_noise:
+            valid_indices = (frequency > 0) & (measured_noise > 0) & ~np.isnan(frequency) & ~np.isnan(measured_noise)
+        else:
+            valid_indices = (frequency > 0) & ~np.isnan(frequency)
         
         frequency_clean = frequency[valid_indices]
-        measured_noise_clean = measured_noise[valid_indices]
+        
+        if has_measured_noise:
+            measured_noise_clean = measured_noise[valid_indices]
         
         if has_lna_input_noise:
             lna_input_noise_clean = lna_input_noise[valid_indices]
-            lna_gain_db_clean = lna_gain_db[valid_indices]
         
         print(f"✓ {len(frequency_clean)} valid data points for plotting")
         
-        # Create the plot
-        if has_lna_input_noise:
-            # Create subplot with three plots
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14))
-            
-            # Create parameter text box
-            param_text = []
-            if 'lna_filter' in params:
-                param_text.append(f"LNA Filter: {params['lna_filter']}")
-            if 'sample_frequency' in params:
-                param_text.append(f"Sample Freq: {params['sample_frequency']}")
-            if 'fft_averages' in params:
-                param_text.append(f"FFT Averages: {params['fft_averages']}")
-            if 'sample_size' in params:
-                param_text.append(f"Sample Size: {params['sample_size']}")
-            if 'fft_bin_size' in params:
-                param_text.append(f"FFT Bin Size: {params['fft_bin_size']}")
-            
-            param_string = '\n'.join(param_text)
-            
+        # Check if we have any valid data points
+        if len(frequency_clean) == 0:
+            print("❌ No valid data points found for plotting. Check data quality and filtering criteria.")
+            return
+        
+        # Create the plot based on available data
+        if has_measured_noise and has_lna_input_noise:
+            # Create subplot with two plots (measured noise, input noise)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+            plot_count = 2
+        elif has_lna_input_noise:
+            # Create single plot for LNA input noise only
+            fig, ax2 = plt.subplots(1, 1, figsize=(12, 6))
+            plot_count = 1
+        elif has_measured_noise:
+            # Create single plot for measured noise only
+            fig, ax1 = plt.subplots(1, 1, figsize=(12, 6))
+            plot_count = 1
+        else:
+            print("❌ No valid noise data found for plotting.")
+            return
+        
+        # Create parameter text box
+        param_text = []
+        if 'lna_filter' in params:
+            param_text.append(f"LNA Filter: {params['lna_filter']}")
+        if 'sample_frequency' in params:
+            param_text.append(f"Sample Freq: {params['sample_frequency']}")
+        if 'fft_averages' in params:
+            param_text.append(f"FFT Averages: {params['fft_averages']}")
+        if 'sample_size' in params:
+            param_text.append(f"Sample Size: {params['sample_size']}")
+        if 'fft_bin_size' in params:
+            param_text.append(f"FFT Bin Size: {params['fft_bin_size']}")
+        
+        param_string = '\n'.join(param_text)
+        
+        # Plot based on available data
+        if has_measured_noise and plot_count == 2:
             # Plot 1: Measured noise density
             ax1.loglog(frequency_clean, measured_noise_clean, 'b.-', linewidth=2, markersize=4, label='Measured Noise Density')
             ax1.set_xlabel('Frequency (Hz)')
             ax1.set_ylabel('Measured Noise Density (V/√Hz)')
-            ax1.set_title('LNA Measured Noise Density vs Frequency')
+            #set the title to the plot_title if provided
+            if plot_title:
+                ax1.set_title(plot_title)
+            else:
+                ax1.set_title('LNA Measured Noise Density vs Frequency')
             ax1.grid(True, which="both", ls="-", alpha=0.3)
             ax1.legend()
+            
+            # Set y-axis limits if specified
+            if y_min is not None and y_max is not None:
+                ax1.set_ylim(y_min, y_max)
             
             # Add measurement parameters text box to first plot
             if param_text:
@@ -231,74 +276,83 @@ def plot_noise_density(csv_file_path):
                         verticalalignment='top', horizontalalignment='right', 
                         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8),
                         fontsize=9)
-            
-            # Plot 2: LNA input noise density (gain compensated)
-            ax2.loglog(frequency_clean, lna_input_noise_clean, 'r.-', linewidth=2, markersize=4, label='LNA Input Noise Density')
-            ax2.set_xlabel('Frequency (Hz)')
-            ax2.set_ylabel('LNA Input Noise Density (V/√Hz)')
-            ax2.set_title('LNA Input Noise Density vs Frequency (Gain Compensated)')
-            ax2.grid(True, which="both", ls="-", alpha=0.3)
-            ax2.legend()
-            
-            # Add measurement parameters text box to second plot
-            if param_text:
-                ax2.text(0.98, 0.98, param_string, transform=ax2.transAxes, 
-                        verticalalignment='top', horizontalalignment='right',
-                        bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.8),
-                        fontsize=9)
-            
-            # Plot 3: LNA Gain vs Frequency
-            if eeprom_frequencies is not None and eeprom_gains is not None:
-                # Use EEPROM calibration data for gain plot
-                ax3.semilogx(eeprom_frequencies, eeprom_gains, 'g.-', linewidth=2, markersize=4, label='LNA Gain (EEPROM)')
-                ax3.set_xlabel('Frequency (Hz)')
-                ax3.set_ylabel('LNA Gain (dB)')
-                ax3.set_title('LNA Filter Gain vs Frequency (EEPROM Calibration Data)')
-                ax3.grid(True, which="both", ls="-", alpha=0.3)
-                ax3.legend()
+        
+        if has_lna_input_noise:
+            # Plot LNA input noise density (gain compensated)
+            if plot_count == 2:
+                # Use ax2 for subplot
+                ax2.loglog(frequency_clean, lna_input_noise_clean, 'r.-', linewidth=2, markersize=4, label='LNA Input Noise Density')
+                ax2.set_xlabel('Frequency (Hz)')
+                ax2.set_ylabel('LNA Input Noise Density (V/√Hz)')
+                # Set the title to the plot_title if provided
+                if plot_title:
+                    ax2.set_title(plot_title)
+                else:
+                    ax2.set_title('LNA Input Noise Density vs Frequency (Gain Compensated)')
+                ax2.grid(True, which="both", ls="-", alpha=0.3)
+                ax2.legend()
                 
-                # Add measurement parameters text box to third plot
-                if param_text:
-                    ax3.text(0.98, 0.98, param_string, transform=ax3.transAxes, 
-                            verticalalignment='top', horizontalalignment='right',
-                            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8),
-                            fontsize=9)
+                # Set y-axis limits if specified
+                if y_min is not None and y_max is not None:
+                    ax2.set_ylim(y_min, y_max)
             else:
-                # Fallback to measured gain data if EEPROM data not available
-                ax3.semilogx(frequency_clean, lna_gain_db_clean, 'g.-', linewidth=2, markersize=4, label='LNA Gain (Measured)')
-                ax3.set_xlabel('Frequency (Hz)')
-                ax3.set_ylabel('LNA Gain (dB)')
-                ax3.set_title('LNA Filter Gain vs Frequency (Measured Data)')
-                ax3.grid(True, which="both", ls="-", alpha=0.3)
-                ax3.legend()
+                # Single plot mode
+                ax2.loglog(frequency_clean, lna_input_noise_clean, 'r.-', linewidth=2, markersize=4, label='LNA Input Noise Density')
+                ax2.set_xlabel('Frequency (Hz)')
+                ax2.set_ylabel('LNA Input Noise Density (V/√Hz)')
+                # Set the title to the plot_title if provided
+                if plot_title:
+                    ax2.set_title(plot_title)
+                else:
+                    ax2.set_title('LNA Input Noise Density vs Frequency (Gain Compensated)')
+                ax2.grid(True, which="both", ls="-", alpha=0.3)
+                ax2.legend()
                 
-                # Add measurement parameters text box to third plot
+                # Set y-axis limits if specified
+                if y_min is not None and y_max is not None:
+                    ax2.set_ylim(y_min, y_max)
+                
+                # Add measurement parameters text box for single plot
                 if param_text:
-                    ax3.text(0.98, 0.98, param_string, transform=ax3.transAxes, 
-                            verticalalignment='top', horizontalalignment='right',
-                            bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8),
+                    ax2.text(0.98, 0.98, param_string, transform=ax2.transAxes, 
+                            verticalalignment='top', horizontalalignment='right', 
+                            bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.8),
                             fontsize=9)
-            
-            plt.tight_layout()
-            
-        else:
+        
+        elif has_measured_noise and plot_count == 1:
             # Single plot for measured noise only
-            plt.figure(figsize=(12, 8))
-            plt.loglog(frequency_clean, measured_noise_clean, 'b.-', linewidth=2, markersize=4, label='Noise Density')
-            plt.xlabel('Frequency (Hz)')
-            plt.ylabel('Noise Density (V/√Hz)')
-            plt.title('Noise Density vs Frequency (Log-Log Scale)')
-            plt.grid(True, which="both", ls="-", alpha=0.3)
-            plt.legend()
+            ax1.loglog(frequency_clean, measured_noise_clean, 'b.-', linewidth=2, markersize=4, label='Measured Noise Density')
+            ax1.set_xlabel('Frequency (Hz)')
+            ax1.set_ylabel('Measured Noise Density (V/√Hz)')
+            ax1.set_title('LNA Measured Noise Density vs Frequency')
+            ax1.grid(True, which="both", ls="-", alpha=0.3)
+            ax1.legend()
+            
+            # Set y-axis limits if specified
+            if y_min is not None and y_max is not None:
+                ax1.set_ylim(y_min, y_max)
+            
+            # Add measurement parameters text box
+            if param_text:
+                ax1.text(0.98, 0.98, param_string, transform=ax1.transAxes, 
+                        verticalalignment='top', horizontalalignment='right', 
+                        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8),
+                        fontsize=9)
+        
+        plt.tight_layout()
         
         # Display statistics
         print(f"\n📈 Plot Statistics:")
-        print(f"  Frequency range: {frequency_clean.min():.1f} Hz to {frequency_clean.max()/1e6:.3f} MHz")
-        print(f"  Measured noise range: {measured_noise_clean.min():.2e} to {measured_noise_clean.max():.2e} V/√Hz")
-        
-        if has_lna_input_noise:
-            print(f"  LNA input noise range: {lna_input_noise_clean.min():.2e} to {lna_input_noise_clean.max():.2e} V/√Hz")
-            print(f"  LNA gain range: {lna_gain_db_clean.min():.1f} to {lna_gain_db_clean.max():.1f} dB")
+        if len(frequency_clean) > 0:
+            print(f"  Frequency range: {frequency_clean.min():.1f} Hz to {frequency_clean.max()/1e6:.3f} MHz")
+            
+            if has_measured_noise:
+                print(f"  Measured noise range: {measured_noise_clean.min():.2e} to {measured_noise_clean.max():.2e} V/√Hz")
+            
+            if has_lna_input_noise:
+                print(f"  LNA input noise range: {lna_input_noise_clean.min():.2e} to {lna_input_noise_clean.max():.2e} V/√Hz")
+        else:
+            print("  No valid data points found for statistics")
         
         # Save the plot
         plot_filename = csv_file_path.replace('.csv', '_plot.png')
@@ -320,15 +374,21 @@ try:
     display_summary = False
     plot_results = True
     write_csv_file = True
-    CSV_BASE_FILENAME = "LNANoiseDensity"  # Base filename for CSV output files
+    include_measured_data = False
+    plot_y_min = 1e-9  # Minimum y-axis limit for plots
+    plot_y_max = 1e-6  # Maximum y-axis limit for plots
+    plot_title = "LT83401 6MHz Noise Density"
+    CSV_BASE_FILENAME = "LT83401 6MHz Noise Density "  # Base filename for CSV output files
 
     #setup the measurement parameters
     sample_frequency = 5e6
-    fft_average_count = 16
-    point_count = 801
-    sample_size = 2**22
+    fft_average_count = 4
+    point_count = 401
+    sample_size = 2**22 
     start_frequency = 10.0
-    end_frequency = 1.0e6
+    end_frequency = 1e6
+    correct_amplitude_spikes = True
+    spike_threshold = 1.5  # Minimum ratio for spike detection (e.g., 2.0 = 2x amplitude)
     
     # LNAmplifier configuration
     lna_filter = 1  # Filter number (1, 2, or 3)
@@ -437,17 +497,20 @@ try:
     results = []
 
     #add the column headers
-    results.append(["FFT Frequency (Hz)", "Measured Noise Density (V/√Hz)", "LNA Gain (dB)", "LNA Input Noise Density (V/√Hz)"])
+    results.append(["FFT Frequency (Hz)", "Measured Noise Density (V/√Hz)", "LNA Input Noise Density (V/√Hz)"])
     analyzer.reset_averages()
 
     #Measure the noise density
     for j in range(fft_average_count):
         print(f"Executing gain and phase measurement {j+1} of {fft_average_count}")
+        lna_device.clear_errors()
         analyzer.execute_gain_phase_measurement()
         if msvcrt.kbhit():
             print("Key pressed, exiting...")
             break
 
+    # Power off the LNA filters
+    lna_device.set_power_off(lna_device.port_index)
 
     # add the results to the results list with unique frequencies
     print(f"\n--- Collecting Data from {len(test_frequencies)} test frequencies ---")
@@ -499,15 +562,13 @@ try:
                 # Calculate LNA input noise density (divide measured noise by gain)
                 lna_input_noise_density = measured_noise_density / gain_linear
                 
-                # Store results: frequency, measured noise, gain (dB), LNA input noise
-                results.append([measurement_frequency, measured_noise_density, gain_db, lna_input_noise_density])
+                # Store results: frequency, measured noise, LNA input noise (no gain_db)
+                results.append([measurement_frequency, measured_noise_density, lna_input_noise_density])
                 used_bins.add(fft_bin)
-                
-                if len(results) <= 6:  # Show first 5 data points for debugging (including header)
-                    print(f"  Point {len(results)-1}: {measurement_frequency:.2f} Hz, Measured: {measured_noise_density:.2e} V/√Hz, Gain: {gain_db:.2f} dB, LNA Input: {lna_input_noise_density:.2e} V/√Hz")
+
             else:
                 # No gain data available, just store measured noise
-                results.append([measurement_frequency, measured_noise_density, None, None])
+                results.append([measurement_frequency, measured_noise_density, None])
                 used_bins.add(fft_bin)
                 
                 if len(results) <= 6:  # Show first 5 data points for debugging
@@ -520,6 +581,55 @@ try:
         print("⚠ Warning: No data collected! Check measurement execution.")
     else:
         print(f"✓ Data collection successful: {len(results)-1} points")
+    
+    # Apply spike correction to LNA input noise density if enabled
+    if correct_amplitude_spikes and len(results) > 1:
+        print("\n--- Applying Amplitude Spike Correction to Noise Density ---")
+        
+        # Extract frequency and LNA input noise density data
+        frequencies = [float(row[0]) for row in results[1:]]  # Skip header
+        lna_input_noise = [float(row[2]) if row[2] is not None else None for row in results[1:]]
+        
+        # Only correct if we have valid LNA input noise data
+        valid_noise_data = [val for val in lna_input_noise if val is not None]
+        if len(valid_noise_data) > 10:  # Need sufficient data points for spike detection
+            # Create lists with only valid data points
+            valid_frequencies = []
+            valid_noise = []
+            valid_indices = []
+            
+            for i, noise_val in enumerate(lna_input_noise):
+                if noise_val is not None:
+                    valid_frequencies.append(frequencies[i])
+                    valid_noise.append(noise_val)
+                    valid_indices.append(i)
+            
+            # Apply spike correction
+            corrected_noise, correction_log = correct_noise_density_spikes(
+                valid_noise, valid_frequencies, spike_threshold=spike_threshold, window_size=5
+            )
+            
+            if correction_log:
+                print(f"✓ Corrected {len(correction_log)} amplitude spikes in noise density data:")
+                for correction in correction_log:
+                    freq_display = f"{correction['frequency']:.1f} Hz" if correction['frequency'] < 1000 else f"{correction['frequency']/1000:.1f} kHz"
+                    print(f"    {freq_display}: {correction['original_noise']:.3e} → {correction['corrected_noise']:.3e} V/√Hz (ratio: {correction['ratio']:.2f}x)")
+                
+                # Update the results with corrected data
+                for i, corrected_val in enumerate(corrected_noise):
+                    original_idx = valid_indices[i]
+                    results[original_idx + 1][2] = corrected_val  # +1 because results[0] is header
+                
+                print(f"✓ Updated {len(corrected_noise)} data points with corrected values")
+            else:
+                print("✓ No amplitude spikes detected in noise density data")
+        else:
+            print("⚠ Insufficient valid noise density data for spike correction")
+    elif correct_amplitude_spikes:
+        print("⚠ Cannot apply spike correction: no data collected")
+    
+    #ping lna
+    lna_device.clear_errors()
     
     # Save results to CSV file
     print("\n--- Saving Data to CSV File ---")
@@ -552,25 +662,26 @@ try:
                 csv_writer.writerow([f"# EEPROM Frequency Points: {len(frequency_data)}"])
             if gain_data:
                 csv_writer.writerow([f"# EEPROM Gain Points: {len(gain_data)}"])
+            csv_writer.writerow([f"# Amplitude Spike Correction: {'Enabled' if correct_amplitude_spikes else 'Disabled'}"])
             csv_writer.writerow(["#"])
             
-            # Write column headers
-            csv_writer.writerow(["frequency", "measured_noise_density", "lna_gain_db", "lna_input_noise_density"])
+            # Write column headers based on include_measured_data setting
+            if include_measured_data:
+                csv_writer.writerow(["frequency", "measured_noise_density", "lna_input_noise_density"])
+            else:
+                csv_writer.writerow(["frequency", "lna_input_noise_density"])
             
             # Write data rows (skip the original header row from results)
             data_rows_written = 0
             for row in results[1:]:
-                csv_writer.writerow(row)
+                if include_measured_data:
+                    # Include all three columns
+                    csv_writer.writerow(row)
+                else:
+                    # Include only frequency and LNA input noise density (skip measured noise density)
+                    csv_writer.writerow([row[0], row[2]])  # frequency, lna_input_noise_density
                 data_rows_written += 1
             
-            # Write EEPROM calibration data section
-            if frequency_data and gain_data:
-                csv_writer.writerow(["#"])
-                csv_writer.writerow(["# EEPROM Calibration Data"])
-                csv_writer.writerow(["# eeprom_frequency_hz", "eeprom_gain_db"])
-                for freq, gain in zip(frequency_data, gain_data):
-                    csv_writer.writerow([freq, gain])
-        
         print(f"✓ CSV file saved: {csv_filename}")
         print(f"  Path: {csv_full_path}")
         print(f"  Header written with metadata")
@@ -579,7 +690,7 @@ try:
         # Generate plots automatically after saving CSV file
         if plot_results:
             print("\n--- Generating Plots ---")
-            plot_noise_density(csv_full_path)
+            plot_noise_density(csv_full_path, y_min=plot_y_min, y_max=plot_y_max, plot_title=plot_title )
         
     except Exception as e:
         print(f"✗ Failed to save CSV file: {e}")
@@ -690,7 +801,6 @@ try:
     analyzer.reset_averages()
     analyzer.disconnect()       
     print("Disconnected from LTpowerAnalyzer")
-    
     lna_device.close()
     print("Disconnected from LNAmplifier")
 
@@ -704,6 +814,12 @@ except Exception as e:
         pass
     try:
         if 'lna_device' in locals():
+            # Power off the LNA filters before closing on error
+            try:
+                lna_device.set_power_off(lna_device.port_index)
+                print("LNAmplifier filters powered off (error cleanup)")
+            except:
+                pass  # Ignore errors during power off in cleanup
             lna_device.close()
     except:
         pass 

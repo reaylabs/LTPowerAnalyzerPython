@@ -709,6 +709,37 @@ class LNAmplifier(SerialDevice):
             print(f"Set Point Count Exception: {e}")
             return False
 
+    def set_power_off(self, port_index):
+        """
+        Turns off both active filters on the board by setting the filter to 0.
+        
+        Args:
+            port_index (int): The index of the port to configure
+            
+        Returns:
+            bool: True if successful, False if an error occurs
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                self.send_command(self._cmdSetFilter, port_index)  # Send the set filter command
+                self.send_value(0, port_index)  # Send filter value 0 to turn off both filters
+                response = self.read_value(True, port_index)  # Read the response
+                
+                if self.debug:
+                    print(f"Power off (filter set to 0) on port {port_index}")
+                    if response:
+                        print(f"Device response: {response}")
+                
+                return True
+                
+            elif self.debug:
+                print(f"Set Power Off: Device not ready on port {port_index}")
+                return False
+                
+        except Exception as e:
+            print(f"Set Power Off Exception: {e}")
+            return False
+
     def set_test_mode(self, port_index, value):
         """Sets the test mode for the specified port to the given boolean value (0 or 1).
            In Test Mode, the automatic system check between commands is disabled."""

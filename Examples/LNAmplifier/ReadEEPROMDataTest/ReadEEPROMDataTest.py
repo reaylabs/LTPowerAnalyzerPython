@@ -41,6 +41,8 @@ import sys
 import os
 import time
 import math
+import matplotlib.pyplot as plt
+import numpy as np
 from datetime import datetime
 
 # Add the root project directory and Drivers directory to the Python path
@@ -73,6 +75,71 @@ def save_dataset_to_file(data, filename, data_name):
         print(f"✓ {data_name} saved to: {filename}")
     except Exception as e:
         print(f"✗ Failed to save {data_name}: {e}")
+
+def plot_filter_gains(frequencies, gain1, gain2, gain3, data_dir, timestamp):
+    """
+    Create a plot of the three filter gains vs frequency.
+    
+    Args:
+        frequencies (list): Array of frequency values in Hz
+        gain1 (list): Filter 1 gain data in dB
+        gain2 (list): Filter 2 gain data in dB  
+        gain3 (list): Filter 3 gain data in dB
+        data_dir (str): Directory to save the plot
+        timestamp (str): Timestamp for filename
+    """
+    try:
+        # Create the plot
+        plt.figure(figsize=(12, 8))
+        
+        # Convert frequencies to MHz for better readability
+        freq_mhz = [f / 1e6 for f in frequencies]
+        
+        # Plot each filter's gain
+        if gain1 is not None:
+            plt.plot(freq_mhz, gain1, 'b.-', linewidth=2, markersize=4, label='Filter 1', alpha=0.8)
+        if gain2 is not None:
+            plt.plot(freq_mhz, gain2, 'r.-', linewidth=2, markersize=4, label='Filter 2', alpha=0.8)
+        if gain3 is not None:
+            plt.plot(freq_mhz, gain3, 'g.-', linewidth=2, markersize=4, label='Filter 3', alpha=0.8)
+        
+        # Set labels and title
+        plt.xlabel('Frequency (MHz)')
+        plt.ylabel('Gain (dB)')
+        plt.title('LNAmplifier Filter Gains vs Frequency')
+        plt.grid(True, alpha=0.3)
+        plt.legend(loc='lower left')
+        
+        # Set log scale for frequency if frequency range is large
+        freq_range = max(frequencies) / min(frequencies)
+        if freq_range > 100:  # Use log scale if frequency spans more than 2 decades
+            plt.semilogx()
+        
+        # Add text box with measurement info (positioned to avoid legend overlap)
+        info_text = f"Frequency Range: {min(frequencies):.1f} Hz - {max(frequencies)/1e6:.3f} MHz\n"
+        info_text += f"Data Points: {len(frequencies)}\n"
+        info_text += f"Generated: {timestamp.replace('_', ' ')}"
+        
+        plt.text(0.35, 0.02, info_text, transform=plt.gca().transAxes,
+                verticalalignment='bottom', horizontalalignment='left',
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8),
+                fontsize=9)
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        plot_filename = f"eeprom_filter_gains_{timestamp}.png"
+        plot_full_path = os.path.join(data_dir, plot_filename)
+        plt.savefig(plot_full_path, dpi=300, bbox_inches='tight')
+        
+        # Show the plot
+        plt.show()
+        
+        print(f"✓ Plot saved: {plot_filename}")
+        print(f"  Path: {plot_full_path}")
+        
+    except Exception as e:
+        print(f"✗ Failed to create plot: {e}")
 
 def main():
     """Main function to read EEPROM datasets."""
@@ -166,11 +233,15 @@ def main():
         # Save datasets to CSV file
         print(f"\n--- Saving Data to CSV File ---")
         script_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(script_dir, "Data")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        
+        # Create Data directory if it doesn't exist
+        os.makedirs(data_dir, exist_ok=True)
         
         # Create CSV file with all data
         csv_filename = f"eeprom_calibration_data_{timestamp}.csv"
-        csv_full_path = os.path.join(script_dir, csv_filename)
+        csv_full_path = os.path.join(data_dir, csv_filename)
         
         try:
             # Check if we have all required datasets
@@ -198,6 +269,7 @@ def main():
                         csvfile.write(f"{freq:.6f},{g1},{g2},{g3}\n")
                 
                 print(f"✓ CSV file saved: {csv_filename}")
+                print(f"  Path: {csv_full_path}")
                 
                 # Report what data was included
                 data_status = []
@@ -211,6 +283,10 @@ def main():
                     data_status.append(f"Filter 3 gains: {len(gain3)} points")
                 
                 print(f"  Included data: {', '.join(data_status)}")
+                
+                # Create plot of filter gains vs frequency
+                print(f"\n--- Creating Filter Gains Plot ---")
+                plot_filter_gains(frequencies, gain1, gain2, gain3, data_dir, timestamp)
                 
             else:
                 print("✗ Cannot create CSV: No frequency data available")
