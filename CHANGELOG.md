@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.8] - 2025-11-6
+### Added
+- Added the LNA2 first measurements
+
 ## [0.0.7] - 2025-10-26
 ### Added
 - Ability to set LNANoiseDensity plot name

@@ -107,8 +107,8 @@ async def main():
                         efficiency = 100* measurement.Power[1] / measurement.Power[0] if measurement.Power[0] != 0 else 0
                         power_loss = measurement.Power[0] - measurement.Power[1]
                         sweep_data = [
-                            f"{measurement.Current[0]:.3E}", f"{measurement.Voltage[0]:.3f}", f"{measurement.Power[0]:.3f}",
-                            f"{measurement.Current[1]:.3E}", f"{measurement.Voltage[1]:.3f}", f"{measurement.Power[1]:.3f}",
+                            f"{measurement.Current[0]:.3E}", f"{measurement.Voltage[0]:.4f}", f"{measurement.Power[0]:.3f}",
+                            f"{measurement.Current[1]:.3E}", f"{measurement.Voltage[1]:.4f}", f"{measurement.Power[1]:.3f}",
                             f"{efficiency:.2f}", f"{power_loss:.3f}"
                         ]
                         print("\t".join(sweep_data))

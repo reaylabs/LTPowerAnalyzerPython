@@ -377,12 +377,12 @@ try:
     include_measured_data = False
     plot_y_min = 1e-9  # Minimum y-axis limit for plots
     plot_y_max = 1e-6  # Maximum y-axis limit for plots
-    plot_title = "LT83401 6MHz Noise Density"
-    CSV_BASE_FILENAME = "LT83401 6MHz Noise Density "  # Base filename for CSV output files
+    plot_title = "LT83201 LNA2 Noise Density"
+    CSV_BASE_FILENAME = "LT83201 LNA2 Noise Density "  # Base filename for CSV output files
 
     #setup the measurement parameters
     sample_frequency = 5e6
-    fft_average_count = 4
+    fft_average_count = 16
     point_count = 401
     sample_size = 2**22 
     start_frequency = 10.0
@@ -497,7 +497,7 @@ try:
     results = []
 
     #add the column headers
-    results.append(["FFT Frequency (Hz)", "Measured Noise Density (V/√Hz)", "LNA Input Noise Density (V/√Hz)"])
+    results.append(["FFT Frequency (Hz)", "Measured Noise Density (V/√Hz)", "LNA Input Noise Density (V/√Hz)", "LNA Gain (dB)"])
     analyzer.reset_averages()
 
     #Measure the noise density
@@ -562,13 +562,13 @@ try:
                 # Calculate LNA input noise density (divide measured noise by gain)
                 lna_input_noise_density = measured_noise_density / gain_linear
                 
-                # Store results: frequency, measured noise, LNA input noise (no gain_db)
-                results.append([measurement_frequency, measured_noise_density, lna_input_noise_density])
+                # Store results: frequency, measured noise, LNA input noise, gain in dB
+                results.append([measurement_frequency, measured_noise_density, lna_input_noise_density, gain_db])
                 used_bins.add(fft_bin)
 
             else:
                 # No gain data available, just store measured noise
-                results.append([measurement_frequency, measured_noise_density, None])
+                results.append([measurement_frequency, measured_noise_density, None, None])
                 used_bins.add(fft_bin)
                 
                 if len(results) <= 6:  # Show first 5 data points for debugging
@@ -615,7 +615,7 @@ try:
                     freq_display = f"{correction['frequency']:.1f} Hz" if correction['frequency'] < 1000 else f"{correction['frequency']/1000:.1f} kHz"
                     print(f"    {freq_display}: {correction['original_noise']:.3e} → {correction['corrected_noise']:.3e} V/√Hz (ratio: {correction['ratio']:.2f}x)")
                 
-                # Update the results with corrected data
+                # Update the results with corrected data (only update LNA input noise density, keep gain unchanged)
                 for i, corrected_val in enumerate(corrected_noise):
                     original_idx = valid_indices[i]
                     results[original_idx + 1][2] = corrected_val  # +1 because results[0] is header
@@ -667,19 +667,19 @@ try:
             
             # Write column headers based on include_measured_data setting
             if include_measured_data:
-                csv_writer.writerow(["frequency", "measured_noise_density", "lna_input_noise_density"])
+                csv_writer.writerow(["frequency", "measured_noise_density", "lna_input_noise_density", "lna_gain_db"])
             else:
-                csv_writer.writerow(["frequency", "lna_input_noise_density"])
+                csv_writer.writerow(["frequency", "lna_input_noise_density", "lna_gain_db"])
             
             # Write data rows (skip the original header row from results)
             data_rows_written = 0
             for row in results[1:]:
                 if include_measured_data:
-                    # Include all three columns
+                    # Include all four columns: frequency, measured noise, LNA input noise, gain
                     csv_writer.writerow(row)
                 else:
-                    # Include only frequency and LNA input noise density (skip measured noise density)
-                    csv_writer.writerow([row[0], row[2]])  # frequency, lna_input_noise_density
+                    # Include frequency, LNA input noise density, and gain (skip measured noise density)
+                    csv_writer.writerow([row[0], row[2], row[3]])  # frequency, lna_input_noise_density, lna_gain_db
                 data_rows_written += 1
             
         print(f"✓ CSV file saved: {csv_filename}")
@@ -714,11 +714,11 @@ try:
             frequencies = [float(row[0]) for row in results[1:]]
             measured_noise_densities = [float(row[1]) for row in results[1:]]
             
-            # Check if we have LNA input noise data (4th column)
+            # Check if we have LNA input noise data (3rd column)
             lna_input_noise_densities = []
             has_gain_data = False
             try:
-                lna_input_noise_densities = [float(row[3]) if row[3] is not None else None for row in results[1:]]
+                lna_input_noise_densities = [float(row[2]) if row[2] is not None else None for row in results[1:]]
                 has_gain_data = any(val is not None for val in lna_input_noise_densities)
             except (IndexError, ValueError):
                 has_gain_data = False
