@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.9] - 2025-11-7
+### Added
+- Added the LTPowerAnalyzer Input Noise Density measurement
+
 ## [0.0.8] - 2025-11-6
 ### Added
 - Added the LNA2 first measurements

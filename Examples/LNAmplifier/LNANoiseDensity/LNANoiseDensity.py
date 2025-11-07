@@ -375,10 +375,10 @@ try:
     plot_results = True
     write_csv_file = True
     include_measured_data = False
-    plot_y_min = 1e-9  # Minimum y-axis limit for plots
-    plot_y_max = 1e-6  # Maximum y-axis limit for plots
-    plot_title = "LT83201 LNA2 Noise Density"
-    CSV_BASE_FILENAME = "LT83201 LNA2 Noise Density "  # Base filename for CSV output files
+    plot_y_min = 1e-11  # Minimum y-axis limit for plots
+    plot_y_max = 1e-8  # Maximum y-axis limit for plots
+    plot_title = "LTPowerAnalyzer Noise Density"
+    CSV_BASE_FILENAME = "LTPowerAnalyzer Noise Density "  # Base filename for CSV output files
 
     #setup the measurement parameters
     sample_frequency = 5e6
