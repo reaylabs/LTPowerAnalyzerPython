@@ -302,11 +302,11 @@ def main():
         
         # Configure Bode100 for gain-phase measurement
         bode_device.start_frequency = 10.0
-        bode_device.stop_frequency = 1000000.0  # 1 MHz
+        bode_device.stop_frequency = 10000000.0  # 10 MHz
         bode_device.point_count = point_count
         bode_device.sweep_type = "LOG"
-        bode_device.bandwidth = 3000
-        bode_device.source_level = -13.4
+        bode_device.bandwidth = 100
+        bode_device.source_level = -8
         bode_device.measurement_type = "GAINphase"
         bode_device.format = "SLOG"
         bode_device.attenuator = [0,30]  # R1=0dB, R2=30dB

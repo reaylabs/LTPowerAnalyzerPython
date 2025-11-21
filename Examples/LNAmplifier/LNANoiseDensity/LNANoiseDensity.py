@@ -375,14 +375,14 @@ try:
     plot_results = True
     write_csv_file = True
     include_measured_data = False
-    plot_y_min = 1e-11  # Minimum y-axis limit for plots
+    plot_y_min = 1e-10  # Minimum y-axis limit for plots
     plot_y_max = 1e-8  # Maximum y-axis limit for plots
-    plot_title = "LTPowerAnalyzer Noise Density"
-    CSV_BASE_FILENAME = "LTPowerAnalyzer Noise Density "  # Base filename for CSV output files
+    plot_title = "LNA_2 1Mhz Noise Density"
+    CSV_BASE_FILENAME = "LNA_2 1Mhz Noise Density"  # Base filename for CSV output files
 
     #setup the measurement parameters
     sample_frequency = 5e6
-    fft_average_count = 16
+    fft_average_count = 32
     point_count = 401
     sample_size = 2**22 
     start_frequency = 10.0
@@ -390,6 +390,9 @@ try:
     correct_amplitude_spikes = True
     spike_threshold = 1.5  # Minimum ratio for spike detection (e.g., 2.0 = 2x amplitude)
     
+    # File Saving
+    save_file = True
+
     # LNAmplifier configuration
     lna_filter = 1  # Filter number (1, 2, or 3)
     data_index = lna_filter  # EEPROM data index matches filter number (1=Filter1, 2=Filter2, 3=Filter3)
@@ -632,71 +635,72 @@ try:
     lna_device.clear_errors()
     
     # Save results to CSV file
-    print("\n--- Saving Data to CSV File ---")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(script_dir, "Data")
-    
-    # Create Data directory if it doesn't exist
-    os.makedirs(data_dir, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    csv_filename = f"{CSV_BASE_FILENAME}_{timestamp}.csv"
-    csv_full_path = os.path.join(data_dir, csv_filename)
-    
-    try:
-        with open(csv_full_path, 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile)
-            
-            # Write header with metadata
-            csv_writer.writerow(["# LNAmplifier Noise Density Measurement"])
-            csv_writer.writerow([f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
-            csv_writer.writerow([f"# LNA Filter: {lna_filter}"])
-            csv_writer.writerow([f"# EEPROM Data Index: {data_index}"])
-            csv_writer.writerow([f"# Sample Frequency: {sample_frequency/1e6:.1f} MHz"])
-            csv_writer.writerow([f"# FFT Averages: {fft_average_count}"])
-            csv_writer.writerow([f"# Sample Size: {sample_size} points"])
-            csv_writer.writerow([f"# FFT Bin Size: {analyzer.fft_bin_size:.2f} Hz"])
-            csv_writer.writerow([f"# Total Test Frequencies: {len(test_frequencies)}"])
-            csv_writer.writerow([f"# Unique Data Points: {len(results)-1}"])
-            if frequency_data:
-                csv_writer.writerow([f"# EEPROM Frequency Points: {len(frequency_data)}"])
-            if gain_data:
-                csv_writer.writerow([f"# EEPROM Gain Points: {len(gain_data)}"])
-            csv_writer.writerow([f"# Amplitude Spike Correction: {'Enabled' if correct_amplitude_spikes else 'Disabled'}"])
-            csv_writer.writerow(["#"])
-            
-            # Write column headers based on include_measured_data setting
-            if include_measured_data:
-                csv_writer.writerow(["frequency", "measured_noise_density", "lna_input_noise_density", "lna_gain_db"])
-            else:
-                csv_writer.writerow(["frequency", "lna_input_noise_density", "lna_gain_db"])
-            
-            # Write data rows (skip the original header row from results)
-            data_rows_written = 0
-            for row in results[1:]:
+    if save_file:
+        print("\n--- Saving Data to CSV File ---")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(script_dir, "Data")
+        
+        # Create Data directory if it doesn't exist
+        os.makedirs(data_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        csv_filename = f"{CSV_BASE_FILENAME}_{timestamp}.csv"
+        csv_full_path = os.path.join(data_dir, csv_filename)
+        
+        try:
+            with open(csv_full_path, 'w', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+                
+                # Write header with metadata
+                csv_writer.writerow(["# LNAmplifier Noise Density Measurement"])
+                csv_writer.writerow([f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                csv_writer.writerow([f"# LNA Filter: {lna_filter}"])
+                csv_writer.writerow([f"# EEPROM Data Index: {data_index}"])
+                csv_writer.writerow([f"# Sample Frequency: {sample_frequency/1e6:.1f} MHz"])
+                csv_writer.writerow([f"# FFT Averages: {fft_average_count}"])
+                csv_writer.writerow([f"# Sample Size: {sample_size} points"])
+                csv_writer.writerow([f"# FFT Bin Size: {analyzer.fft_bin_size:.2f} Hz"])
+                csv_writer.writerow([f"# Total Test Frequencies: {len(test_frequencies)}"])
+                csv_writer.writerow([f"# Unique Data Points: {len(results)-1}"])
+                if frequency_data:
+                    csv_writer.writerow([f"# EEPROM Frequency Points: {len(frequency_data)}"])
+                if gain_data:
+                    csv_writer.writerow([f"# EEPROM Gain Points: {len(gain_data)}"])
+                csv_writer.writerow([f"# Amplitude Spike Correction: {'Enabled' if correct_amplitude_spikes else 'Disabled'}"])
+                csv_writer.writerow(["#"])
+                
+                # Write column headers based on include_measured_data setting
                 if include_measured_data:
-                    # Include all four columns: frequency, measured noise, LNA input noise, gain
-                    csv_writer.writerow(row)
+                    csv_writer.writerow(["frequency", "measured_noise_density", "lna_input_noise_density", "lna_gain_db"])
                 else:
-                    # Include frequency, LNA input noise density, and gain (skip measured noise density)
-                    csv_writer.writerow([row[0], row[2], row[3]])  # frequency, lna_input_noise_density, lna_gain_db
-                data_rows_written += 1
+                    csv_writer.writerow(["frequency", "lna_input_noise_density", "lna_gain_db"])
+                
+                # Write data rows (skip the original header row from results)
+                data_rows_written = 0
+                for row in results[1:]:
+                    if include_measured_data:
+                        # Include all four columns: frequency, measured noise, LNA input noise, gain
+                        csv_writer.writerow(row)
+                    else:
+                        # Include frequency, LNA input noise density, and gain (skip measured noise density)
+                        csv_writer.writerow([row[0], row[2], row[3]])  # frequency, lna_input_noise_density, lna_gain_db
+                    data_rows_written += 1
+                
+            print(f"✓ CSV file saved: {csv_filename}")
+            print(f"  Path: {csv_full_path}")
+            print(f"  Header written with metadata")
+            print(f"  Data rows written: {data_rows_written}")
             
-        print(f"✓ CSV file saved: {csv_filename}")
-        print(f"  Path: {csv_full_path}")
-        print(f"  Header written with metadata")
-        print(f"  Data rows written: {data_rows_written}")
+            # Generate plots automatically after saving CSV file
+            if plot_results:
+                print("\n--- Generating Plots ---")
+                plot_noise_density(csv_full_path, y_min=plot_y_min, y_max=plot_y_max, plot_title=plot_title )
+            
+        except Exception as e:
+            print(f"✗ Failed to save CSV file: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # Generate plots automatically after saving CSV file
-        if plot_results:
-            print("\n--- Generating Plots ---")
-            plot_noise_density(csv_full_path, y_min=plot_y_min, y_max=plot_y_max, plot_title=plot_title )
-        
-    except Exception as e:
-        print(f"✗ Failed to save CSV file: {e}")
-        import traceback
-        traceback.print_exc()
-    
 
     # Display results to console
     if display_results:         

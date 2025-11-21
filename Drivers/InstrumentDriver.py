@@ -546,7 +546,7 @@ class Bode100(Instrument):
         Args:
             value (int): Number of measurement points (must be one of the allowed values)
         """
-        allowed_values = [51, 101, 201, 401, 801, 1601, 2048, 3201, 4096, 6401, 12801, 16501]
+        allowed_values = [51, 101, 201, 301,401, 801, 1601, 2048, 3201, 4096, 6401, 12801, 16501]
         if value not in allowed_values:
             raise ValueError(f"Point count must be one of {allowed_values}, got {value}")
         self._point_count = value
