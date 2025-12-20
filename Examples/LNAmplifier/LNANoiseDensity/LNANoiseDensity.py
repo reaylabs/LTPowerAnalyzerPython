@@ -382,7 +382,7 @@ try:
 
     #setup the measurement parameters
     sample_frequency = 5e6
-    fft_average_count = 32
+    fft_average_count = 8
     point_count = 401
     sample_size = 2**22 
     start_frequency = 10.0

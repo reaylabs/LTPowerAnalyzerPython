@@ -67,6 +67,11 @@ class LNAmplifier(SerialDevice):
         self._cmdSetEEPROMFloatPage = "18"
         self._cmdGetEEPROMFloatPage = "19"
         self._cmdGetEEPROMDataPageCount = "20"
+        self._cmdSetGain = "21"
+        self._cmdGetGain = "22"
+        self._cmdSetPowerOff = "23"
+        self._cmdSetPowerOn = "24"
+
 
         #Add error descriptions
         #self.device_errors.add_error_description(5, "Communication Timeout")
@@ -145,7 +150,7 @@ class LNAmplifier(SerialDevice):
             5. Returns an array of point_count float values
             
             Args:
-                data_index (int): EEPROM data index (0-3) for base address
+                data_index (int): EEPROM data index (0-8) for base address
                 port_index (int): The index of the port to use
                 
             Returns:
@@ -158,9 +163,9 @@ class LNAmplifier(SerialDevice):
                     return None
                 
                 # Validate inputs
-                if not isinstance(data_index, int) or data_index < 0 or data_index > 3:
+                if not isinstance(data_index, int) or data_index < 0 or data_index > 8:
                     if self.debug:
-                        print(f"Get EEPROM Dataset: Invalid data_index {data_index} (must be 0-3)")
+                        print(f"Get EEPROM Dataset: Invalid data_index {data_index} (must be 0-8)")
                     return None
                 
                 # Step 1: Read point count from LNA
@@ -345,6 +350,28 @@ class LNAmplifier(SerialDevice):
             print(f"Read Filter Exception: {e}")  # Catch and print any exceptions that occur
             return None  # Return None if an error occurs
 
+    def get_gain(self, port_index):
+        """
+        Gets the current gain setting from the specified port.
+        
+        Args:
+            port_index (int): The index of the port to query
+            
+        Returns:
+            str: The current gain value (1=60dB, 2=40dB), or None if an error occurs
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                self.send_command(self._cmdGetGain, port_index)  # Send the read filter command to the specified port
+                gain_value = self.read_value(True, port_index)  # Read the filter value
+                return gain_value
+            elif self.debug:
+                print(f"Read Gain Port Not OK")  # Print a debug message if the port is not OK
+                return None  # Return None if the port is not valid
+        except Exception as e:
+            print(f"Read Gain Exception: {e}")  # Catch and print any exceptions that occur
+            return None  # Return None if an error occurs
+
     def get_point_count(self, port_index):
         """
         Gets the current point count setting from the specified port.
@@ -460,7 +487,7 @@ class LNAmplifier(SerialDevice):
         
         Args:
             float_values (list): Array of float values to store
-            data_index (int): EEPROM data index (0-3) for base address
+            data_index (int): EEPROM data index (0-8) for base address
             port_index (int): The index of the port to use
             
         Returns:
@@ -478,9 +505,9 @@ class LNAmplifier(SerialDevice):
                     print("Set EEPROM Dataset: Invalid float_values array")
                 return False
             
-            if not isinstance(data_index, int) or data_index < 0 or data_index > 3:
+            if not isinstance(data_index, int) or data_index < 0 or data_index > 8:
                 if self.debug:
-                    print(f"Set EEPROM Dataset: Invalid data_index {data_index} (must be 0-3)")
+                    print(f"Set EEPROM Dataset: Invalid data_index {data_index} (must be 0-8)")
                 return False
             
             # Step 1: Read point count from LNA
@@ -663,6 +690,26 @@ class LNAmplifier(SerialDevice):
         except Exception as e:
             print(f"Set Filter Exception: {e}")  # Catch and print any exceptions that occur
 
+    def set_gain(self, gain_value,port_index):
+        """
+        Sets the gain value for the specified port.
+        
+        Args:
+            port_index (int): The index of the port to configure
+            gain_value (str): The gain value to set ("1"=60dB, "2"=40dB)
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                self.send_command(self._cmdSetGain, port_index)  # Send the set gain command to the specified port
+                self.send_value(gain_value, port_index)  # Send the gain value
+                self.read_value(True, port_index)  # Read the response (ignoring the result)
+                if self.debug:
+                    print(f"Gain set to {gain_value} on port {port_index}")
+            elif self.debug:
+                print(f"Set Gain: Device not ready on port {port_index}")  # Debug message if the device is not ready
+        except Exception as e:
+            print(f"Set Gain Exception: {e}")  # Catch and print any exceptions that occur
+
     def set_point_count(self, point_count, port_index):
         """
         Sets the point count for the specified port.
@@ -711,7 +758,7 @@ class LNAmplifier(SerialDevice):
 
     def set_power_off(self, port_index):
         """
-        Turns off both active filters on the board by setting the filter to 0.
+        Turns off all active filters on the board.
         
         Args:
             port_index (int): The index of the port to configure
@@ -721,12 +768,12 @@ class LNAmplifier(SerialDevice):
         """
         try:
             if self.port_ok(port_index):  # Check if the specified port is valid
-                self.send_command(self._cmdSetFilter, port_index)  # Send the set filter command
+                self.send_command(self._cmdSetPowerOff, port_index)  # Send the set filter command
                 self.send_value(0, port_index)  # Send filter value 0 to turn off both filters
                 response = self.read_value(True, port_index)  # Read the response
                 
                 if self.debug:
-                    print(f"Power off (filter set to 0) on port {port_index}")
+                    print(f"Power offon port {port_index}")
                     if response:
                         print(f"Device response: {response}")
                 
@@ -739,7 +786,38 @@ class LNAmplifier(SerialDevice):
         except Exception as e:
             print(f"Set Power Off Exception: {e}")
             return False
-
+        
+    def set_power_on(self, port_index):
+        """
+        Turns on all active filters on the board.
+        
+        Args:
+            port_index (int): The index of the port to configure
+            
+        Returns:
+            bool: True if successful, False if an error occurs
+        """
+        try:
+            if self.port_ok(port_index):  # Check if the specified port is valid
+                self.send_command(self._cmdSetPowerOn, port_index)  # Send the set filter command
+                self.send_value(0, port_index)  # Send filter value 0 to turn off both filters
+                response = self.read_value(True, port_index)  # Read the response
+                
+                if self.debug:
+                    print(f"Power offon port {port_index}")
+                    if response:
+                        print(f"Device response: {response}")
+                
+                return True
+                
+            elif self.debug:
+                print(f"Set Power Off: Device not ready on port {port_index}")
+                return False
+                
+        except Exception as e:
+            print(f"Set Power Off Exception: {e}")
+            return False
+        
     def set_test_mode(self, port_index, value):
         """Sets the test mode for the specified port to the given boolean value (0 or 1).
            In Test Mode, the automatic system check between commands is disabled."""

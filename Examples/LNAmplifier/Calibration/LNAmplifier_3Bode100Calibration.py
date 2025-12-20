@@ -30,6 +30,7 @@ History:
 import sys
 import os
 import time
+import msvcrt
 from datetime import datetime
 
 # Add the root project directory and Drivers directory to the Python path
@@ -41,6 +42,20 @@ sys.path.append(drivers_dir)
 from Drivers.LNAmplifierDriver import LNAmplifier
 from Drivers.InstrumentDriver import Bode100
 from Drivers.Utilites import save_data_to_csv
+
+def check_for_escape():
+    """
+    Check if the user has pressed the Escape key.
+    Returns True if Escape key was pressed, False otherwise.
+    Windows-specific implementation using msvcrt.
+    """
+    if msvcrt.kbhit():
+        key = msvcrt.getch()
+        if key == b'\x1b':  # Escape key code
+            return True
+        elif key == b'\x03':  # Ctrl+C
+            raise KeyboardInterrupt
+    return False
 
 def store_data_in_eeprom(lna_device, port_index, data_values, data_index, data_name):
     """
@@ -306,10 +321,10 @@ def main():
         bode_device.point_count = point_count
         bode_device.sweep_type = "LOG"
         bode_device.bandwidth = 100
-        bode_device.source_level = -8
+        bode_device.source_level = -8.0  # dBm
         bode_device.measurement_type = "GAINphase"
         bode_device.format = "SLOG"
-        bode_device.attenuator = [0,30]  # R1=0dB, R2=30dB
+        bode_device.attenuator = [0,20]  # R1=0dB, R2=20dB
         bode_device.impedance = [1000000, 1000000]  # R1=1MΩ, R2=1MΩ
         bode_device.trigger_source = "BUS"  # Trigger source set to BUS
         bode_device.initiate_continuous = True
@@ -318,14 +333,18 @@ def main():
         bode_device.write_properties()
         
         # Prompt user before executing measurement
-        print(f"\nReady to execute gain-phase measurements for all three filters")
+        print(f"\nReady to execute gain-phase measurements for all 8 filters")
         print("This will:")
-        print("  - Measure Filter 1, 2, and 3 sequentially")
-        print("  - Store frequency data in EEPROM data_index_0")
-        print("  - Store Filter 1 gains in EEPROM data_index_1")
-        print("  - Store Filter 2 gains in EEPROM data_index_2")
-        print("  - Store Filter 3 gains in EEPROM data_index_3")
-
+        print("  - Measure 8 filters sequentially")
+        print("  - Store frequency data in EEPROM dataset 0")
+        print("  - Store Fc=10Mhz, G=60dB in EEPROM dataset 1")
+        print("  - Store Fc=1Mhz, G=60dB in EEPROM dataset 2")
+        print("  - Store Fc=100khz, G=60dB gains in EEPROM dataset 3")
+        print("  - Store Fc=30khz, G=60dB in EEPROM dataset 4")
+        print("  - Store Fc=10Mhz, G=40dB in EEPROM dataset 5")
+        print("  - Store Fc=1Mhz, G=40dB in EEPROM dataset 6")
+        print("  - Store Store Fc=100khz, G=40dB in EEPROM dataset 7")
+        print("  - Store Fc=30khz, G=40dB in EEPROM dataset 8")
         print("\nDo you want to continue? (y/n): ", end="")
         
         user_response = input().strip().lower()
@@ -337,8 +356,8 @@ def main():
         lna_device.clear_errors()
         lna_device.set_point_count(point_count, port_index)
         
-        # Execute measurements for all three filters
-        filters_to_measure = [1, 2, 3]
+        # Execute measurements for all 8 filters
+        filters_to_measure = [1, 2, 3, 4, 5, 6, 7, 8]
         frequencies = None  # Will be set from first measurement
         all_gains = {}      # Dictionary to store gains for each filter
         all_successes = []  # Track storage success for each filter
@@ -346,19 +365,58 @@ def main():
         all_data_rows = []  # Store all measurement data for CSV backup
         
         for filter_num in filters_to_measure:
+
+            #if user has typed an escape key, exit the calibration
+            if check_for_escape():
+                print("Escape keypress detected, exiting the calibration.")
+                return
+            
             print(f"\n--- Measuring Filter {filter_num} ---")
+
+            #Set the desired filter and gain on the LNAmplifier
+            if filter_num in [1, 2, 3, 4]:
+                desired_gain = 1  # 60 dB
+                desired_filter = filter_num
+                bode_device. source_level = -8.0  # dBm for 60dB gain   
+            else:
+                desired_gain = 2  # 40 dB
+                desired_filter = filter_num - 4
+                bode_device. source_level = 11.6  # dBm for 40dB gain
             
             # Set the filter (filter_value as string, then port_index)
-            print(f"Setting LNAmplifier to filter {filter_num}...", end=" ")
-            lna_device.set_filter(str(filter_num), port_index)
+            if desired_filter == 1:
+                print(f"Setting LNAmplifier filter to Fc=10MHz...", end=" ")
+            elif desired_filter == 2:
+                print(f"Setting LNAmplifier filter to Fc=1MHz...", end=" ")
+            elif desired_filter == 3:
+                print(f"Setting LNAmplifier filter to Fc=100kHz...", end=" ")
+            else:
+                print(f"Setting LNAmplifier filter to Fc=30kHz...", end=" ")
+            lna_device.set_filter(str(desired_filter), port_index)
             
             # Verify filter was set correctly
             current_filter = lna_device.get_filter(port_index)
-            if current_filter != str(filter_num):
-                print(f"✗ Failed to set filter {filter_num} (got {current_filter})")
+            if current_filter != str(desired_filter):
+                print(f"✗ Failed to set filter {desired_filter} (got {current_filter})")
                 continue
             print("✓")
-            
+
+            #Set the gain (gain_value as string, then port_index)
+            if desired_gain == 1:
+                print(f"Setting LNAmplifier gain to 60dB...", end=" ")
+            else:
+                print(f"Setting LNAmplifier gain to 40dB...", end=" ")
+            lna_device.set_gain(str(desired_gain), port_index)
+
+            # Verify gain was set correctly
+            current_gain = lna_device.get_gain(port_index)
+            if current_gain != str(desired_gain):
+                print(f"✗ Failed to set gain {desired_gain} dB (got {current_gain} dB)")
+                continue
+            print("✓")
+
+
+
             # Execute measurement
             print(f"Executing gain-phase measurement for filter {filter_num}...")
             
@@ -421,7 +479,7 @@ def main():
         )
         all_successes.append(freq_success)
         
-        # Store gain data for each filter in EEPROM data_index_1, 2, 3
+        # Store gain data for each filter in EEPROM
         for i, filter_num in enumerate(filters_to_measure, 1):
             if filter_num in all_gains:
                 print("\n" + "="*50)

@@ -1,5 +1,15 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.11] - 2025-12-20
+### Added
+- Added LNA3 support in the calibration programs and LNAmplifierDriver
+- More calibration runs
+
+## [0.0.10] - 2025-11-20
+### Added
+- Update the Calibration program to go from 10 to 10Mhz
+- More calibration runs
+
 ## [0.0.9] - 2025-11-7
 ### Added
 - Added the LTPowerAnalyzer Input Noise Density measurement
