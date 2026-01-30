@@ -1,5 +1,26 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.12] - 2026-01-29
+### Added
+- **Transient Measurement Functionality**: Complete implementation of transient measurement capabilities
+  - `initialize_transient_measurement()`: Initialize transient measurement system
+  - `execute_transient_measurement()`: Execute step transient measurements
+  - `execute_pwl_transient_measurement()`: Execute Piece-Wise Linear transient measurements
+  - `TransientSetup` and `PWLPoint` configuration classes
+  - PWL utility functions: `create_pwl_step()`, `create_pwl_ramp()`, `create_pwl_pulse_train()`
+- **Current Probe Validation and Safety**: Automatic validation for all probe types (1A, 10A, 50A, 100A)
+  - Current probe connection detection and capability checking
+  - Automatic validation of requested current levels against probe limits
+  - Temperature monitoring and error condition detection
+  - `get_current_probe_info()` for comprehensive probe information
+- **Enhanced Trigger Configuration**: Optimized triggering for transient measurements
+  - Automatic trigger level calculation (50% of maximum current)
+  - Current waveform triggering (channel=1) with rising edge detection
+- **Examples and Documentation**:
+  - `TransientMeasurementExample.py`: Complete demonstration with data export and plotting
+  - `TransientConnectionTest.py`: Validation and testing script
+  - Comprehensive README with usage examples and troubleshooting
+
 ## [0.0.11] - 2025-12-20
 ### Added
 - Added LNA3 support in the calibration programs and LNAmplifierDriver
