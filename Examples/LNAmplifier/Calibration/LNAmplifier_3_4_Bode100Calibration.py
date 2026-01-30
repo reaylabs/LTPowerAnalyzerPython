@@ -341,10 +341,10 @@ def main():
         print("  - Store Fc=1Mhz, G=60dB in EEPROM dataset 2")
         print("  - Store Fc=100khz, G=60dB gains in EEPROM dataset 3")
         print("  - Store Fc=30khz, G=60dB in EEPROM dataset 4")
-        print("  - Store Fc=10Mhz, G=40dB in EEPROM dataset 5")
-        print("  - Store Fc=1Mhz, G=40dB in EEPROM dataset 6")
-        print("  - Store Store Fc=100khz, G=40dB in EEPROM dataset 7")
-        print("  - Store Fc=30khz, G=40dB in EEPROM dataset 8")
+        print("  - Store Fc=10Mhz, G=30dB in EEPROM dataset 5")
+        print("  - Store Fc=1Mhz, G=30dB in EEPROM dataset 6")
+        print("  - Store Store Fc=100khz, G=30dB in EEPROM dataset 7")
+        print("  - Store Fc=30khz, G=30dB in EEPROM dataset 8")
         print("\nDo you want to continue? (y/n): ", end="")
         
         user_response = input().strip().lower()
@@ -379,9 +379,9 @@ def main():
                 desired_filter = filter_num
                 bode_device. source_level = -8.0  # dBm for 60dB gain   
             else:
-                desired_gain = 2  # 40 dB
+                desired_gain = 2  # 30 dB
                 desired_filter = filter_num - 4
-                bode_device. source_level = 11.6  # dBm for 40dB gain
+                bode_device. source_level = 11.6  # dBm for 30dB gain
             
             # Set the filter (filter_value as string, then port_index)
             if desired_filter == 1:
@@ -405,7 +405,7 @@ def main():
             if desired_gain == 1:
                 print(f"Setting LNAmplifier gain to 60dB...", end=" ")
             else:
-                print(f"Setting LNAmplifier gain to 40dB...", end=" ")
+                print(f"Setting LNAmplifier gain to 30dB...", end=" ")
             lna_device.set_gain(str(desired_gain), port_index)
 
             # Verify gain was set correctly
