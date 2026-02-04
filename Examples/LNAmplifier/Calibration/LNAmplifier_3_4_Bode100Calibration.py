@@ -321,7 +321,7 @@ def main():
         bode_device.point_count = point_count
         bode_device.sweep_type = "LOG"
         bode_device.bandwidth = 100
-        bode_device.source_level = -8.0  # dBm
+        bode_device.source_level = 3.0  # dBm
         bode_device.measurement_type = "GAINphase"
         bode_device.format = "SLOG"
         bode_device.attenuator = [0,20]  # R1=0dB, R2=20dB
@@ -341,10 +341,10 @@ def main():
         print("  - Store Fc=1Mhz, G=60dB in EEPROM dataset 2")
         print("  - Store Fc=100khz, G=60dB gains in EEPROM dataset 3")
         print("  - Store Fc=30khz, G=60dB in EEPROM dataset 4")
-        print("  - Store Fc=10Mhz, G=30dB in EEPROM dataset 5")
-        print("  - Store Fc=1Mhz, G=30dB in EEPROM dataset 6")
-        print("  - Store Store Fc=100khz, G=30dB in EEPROM dataset 7")
-        print("  - Store Fc=30khz, G=30dB in EEPROM dataset 8")
+        print("  - Store Fc=10Mhz, G=45dB in EEPROM dataset 5")
+        print("  - Store Fc=1Mhz, G=45dB in EEPROM dataset 6")
+        print("  - Store Store Fc=100khz, G=45dB in EEPROM dataset 7")
+        print("  - Store Fc=30khz, G=45dB in EEPROM dataset 8")
         print("\nDo you want to continue? (y/n): ", end="")
         
         user_response = input().strip().lower()
@@ -379,9 +379,9 @@ def main():
                 desired_filter = filter_num
                 bode_device. source_level = -8.0  # dBm for 60dB gain   
             else:
-                desired_gain = 2  # 30 dB
+                desired_gain = 2  # 45 dB
                 desired_filter = filter_num - 4
-                bode_device. source_level = 11.6  # dBm for 30dB gain
+                bode_device. source_level = 11.6  # dBm for 45dB gain
             
             # Set the filter (filter_value as string, then port_index)
             if desired_filter == 1:
@@ -405,7 +405,7 @@ def main():
             if desired_gain == 1:
                 print(f"Setting LNAmplifier gain to 60dB...", end=" ")
             else:
-                print(f"Setting LNAmplifier gain to 30dB...", end=" ")
+                print(f"Setting LNAmplifier gain to 45dB...", end=" ")
             lna_device.set_gain(str(desired_gain), port_index)
 
             # Verify gain was set correctly

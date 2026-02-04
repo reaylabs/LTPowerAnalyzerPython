@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.13] - 2026-02-04
+### Added
+1. Update LNA files.
+
 ## [0.0.12] - 2026-01-29
 ### Added
 - **Transient Measurement Functionality**: Complete implementation of transient measurement capabilities
