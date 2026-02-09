@@ -274,6 +274,9 @@ def verify_eeprom_data(lna_device, port_index, expected_data, data_index, data_n
 def main():
     """Main calibration function."""
     
+    # Global configuration variables
+    SAVE_TO_CSV = False  # Set to False to disable CSV file output
+    
     # Bode100 SCPI Configuration
     BODE_IP = '192.168.4.104'  # Update with your Bode100 IP
     BODE_PORT = '5025'        # Update with your Bode100 port
@@ -314,6 +317,34 @@ def main():
             print("✗ Failed to connect to Bode100")
             return
         print(f"✓ Bode100 {bode_device.id} connected successfully")
+        
+        # Testing connection to prevent first measurement timeout
+        print("Testing Bode100 connection...", end=" ")
+        try:
+            # Use read_properties to test the connection
+            # This reads current instrument settings and exercises SCPI communication
+            for attempt in range(3):
+                try:
+                    result = bode_device.read_properties()
+                    if result:
+                        print("✓")
+                        break
+                    else:
+                        if attempt == 2:  # Last attempt
+                            print("⚠ Connection test failed after 3 attempts")
+                            print("Continuing anyway - first measurement may timeout")
+                        else:
+                            time.sleep(1)  # Wait 1 second before retry
+                except Exception as e:
+                    if attempt == 2:  # Last attempt
+                        print(f"⚠ Connection test failed after 3 attempts: {e}")
+                        print("Continuing anyway - first measurement may timeout")
+                    else:
+                        time.sleep(1)  # Wait 1 second before retry
+            else:
+                print("⚠ Connection test timeout - continuing anyway")
+        except Exception as e:
+            print(f"⚠ Connection test error: {e} - continuing anyway")
         
         # Configure Bode100 for gain-phase measurement
         bode_device.start_frequency = 5.0
@@ -524,13 +555,15 @@ def main():
             print("\n⚠ Some data storage operations failed")
         
         # Save measurement data to CSV file for backup
-        if headers is not None and len(all_data_rows) > 0:
+        if SAVE_TO_CSV and headers is not None and len(all_data_rows) > 0:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             csv_filename = f"lna_bode100_calibration_{timestamp}.csv"
             full_path = os.path.join(script_dir, csv_filename)
             save_data_to_csv(headers, all_data_rows, full_path)
             print(f"✓ Measurement data saved to: {csv_filename}")
+        elif not SAVE_TO_CSV:
+            print("ⓘ CSV file output disabled (SAVE_TO_CSV = False)")
         else:
             print("⚠ No measurement data to save to CSV")
 

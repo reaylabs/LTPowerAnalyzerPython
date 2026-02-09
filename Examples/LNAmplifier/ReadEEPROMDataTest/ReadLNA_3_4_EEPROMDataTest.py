@@ -164,6 +164,10 @@ def plot_filter_gains(frequencies, gain1, gain2, gain3, gain4, gain5, gain6, gai
 def main():
     """Main function to read EEPROM datasets."""
     
+    # Global configuration variables
+    SAVE_CSV_FILE = False   # Set to False to disable CSV file output
+    SAVE_PLOT_FILE = False  # Set to False to disable plot image output
+    
     print("LNAmplifier EEPROM Data Read Test")
     print("=" * 40)
     
@@ -260,12 +264,16 @@ def main():
                     print(f"✗ Filter {data_index} data not available")
         
         # Save datasets to CSV file
-        print(f"\n--- Saving Data to CSV File ---")
+        if SAVE_CSV_FILE:
+            print(f"\n--- Saving Data to CSV File ---")
+        else:
+            print(f"\n--- CSV File Output Disabled ---")
+            
         script_dir = os.path.dirname(os.path.abspath(__file__))
         data_dir = os.path.join(script_dir, "Data")
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         
-        # Create Data directory if it doesn't exist
+        # Create Data directory if it doesn't exist (needed for plots even if CSV disabled)
         os.makedirs(data_dir, exist_ok=True)
         
         # Create CSV file with all data
@@ -284,7 +292,7 @@ def main():
             gain7 = datasets[7]       # data_index 7 (Filter 7)
             gain8 = datasets[8]       # data_index 8 (Filter 8)
             
-            if frequencies is not None:
+            if frequencies is not None and SAVE_CSV_FILE:
                 with open(csv_full_path, 'w', newline='') as csvfile:
                     # Write header
                     csvfile.write("# LNAmplifier EEPROM Calibration Data\n")
@@ -334,11 +342,29 @@ def main():
                 print(f"  Included data: {', '.join(data_status)}")
                 
                 # Create plot of filter gains vs frequency
-                print(f"\n--- Creating Filter Gains Plot ---")
-                plot_filter_gains(frequencies, gain1, gain2, gain3, gain4, gain5, gain6, gain7, gain8, data_dir, timestamp)
+                if SAVE_PLOT_FILE:
+                    print(f"\n--- Creating Filter Gains Plot ---")
+                    plot_filter_gains(frequencies, gain1, gain2, gain3, gain4, gain5, gain6, gain7, gain8, data_dir, timestamp)
+                else:
+                    print(f"\n--- Plot Output Disabled ---")
+                    print("ⓘ Plot file output disabled (SAVE_PLOT_FILE = False)")
+                
+            elif frequencies is not None and not SAVE_CSV_FILE:
+                print("ⓘ CSV file output disabled (SAVE_CSV_FILE = False)")
+                
+                # Create plot of filter gains vs frequency
+                if SAVE_PLOT_FILE:
+                    print(f"\n--- Creating Filter Gains Plot ---")
+                    plot_filter_gains(frequencies, gain1, gain2, gain3, gain4, gain5, gain6, gain7, gain8, data_dir, timestamp)
+                else:
+                    print(f"\n--- Plot Output Disabled ---")
+                    print("ⓘ Plot file output disabled (SAVE_PLOT_FILE = False)")
                 
             else:
-                print("✗ Cannot create CSV: No frequency data available")
+                if SAVE_CSV_FILE:
+                    print("✗ Cannot create CSV: No frequency data available")
+                elif frequencies is None:
+                    print("✗ No frequency data available for file operations")
                 
         except Exception as e:
             print(f"✗ Failed to create CSV file: {e}")
