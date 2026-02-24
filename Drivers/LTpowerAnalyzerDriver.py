@@ -106,83 +106,6 @@ class LTpowerAnalyzer:
         time: float  # Time in seconds
         current: float  # Current in amps
 
-
-    def __init__(self, debug=False):
-        """Constructor for the LTpowerAnalyzer class"""
-        try:
-            self.meter = LTpowerAnalyzerDriver()
-            self.isConnected = False
-            self.debug = debug  # Debug flag for status messages
-        except Exception as e:
-            print(f"Error initializing LTpowerAnalyzer: {e}")
-
-    #add a property for the bin size
-    @property
-    def fft_bin_size(self):
-        """Read-only property that returns the current bin size in Hz"""
-        return self.meter.AcFFTBinSize
-    
-    @property
-    def fft_average_count(self):
-        """Read-only property that returns the current fft average count"""
-        return self.meter.AcFFTAverageCount
-    
-    @property
-    def fft_effective_noise_bandwidth(self):
-        """Read-only property that returns the current fft effective noise bandwidth in Hz"""
-        return self.meter.AcFFTEffectiveNoiseBandwidth
-    
-    @property
-    def fft_frequency(self):
-        """Read-only property that returns the current fft frequency data"""
-        return self.meter.AcFFTFrequencyData
-    
-    @property
-    def fft_gain_magnitude(self):
-        """Read-only property that returns the current fft gain data"""
-        return self.meter.AcFFTGainData
-    
-    @property
-    def fft_input(self):
-        """Read-only property that returns the current fft input data"""
-        return self.meter.AcFFTInputData
-    
-    @property
-    def fft_input_noise_density(self):
-        """Read-only property that returns the current fft input noise density"""
-        return self.meter.AcFFTInputNoiseDensity
-    
-    @property
-    def fft_output(self):
-        """Read-only property that returns the current fft output data"""
-        return self.meter.AcFFTOutputData
-    
-    @property
-    def fft_output_noise_density(self):
-        """Read-only property that returns the current fft output noise density"""
-        return self.meter.AcFFTOutputNoiseDensity
-    
-    @property
-    def fft_gain_phase(self):
-        """Read-only property that returns the current fft phase data"""
-        return self.meter.AcFFTPhaseData
-
-    @property
-    def fft_window(self):
-        """Read-only property that returns the current fft phase data"""
-        return self.meter.AcFFTWindow     
-    
-    #gain average count
-    @property
-    def gain_average_count(self):
-        """Read-only property that returns the current gain average count"""
-        return self.meter.AcGainAverageCount
-    
-    @property
-    def is_connected(self):
-        """Read-only property that returns the connection status"""
-        return self.isConnected
-    
     @property
     def current_probe_connected(self):
         """Read-only property that returns the current probe connection status"""
@@ -197,18 +120,18 @@ class LTpowerAnalyzer:
             return False
     
     @property
-    def current_probe_name(self):
-        """Read-only property that returns the current probe name"""
+    def current_probe_error(self):
+        """Read-only property that returns True if there's an error with the current probe"""
         try:
-            if self.isConnected and self.current_probe_connected:
-                return self.meter.AcCurrentProbeName
+            if self.isConnected:
+                return self.meter.AcCurrentProbeError
             else:
-                return "No probe connected"
+                return True
         except Exception as e:
             if self.debug:
-                print(f"Error reading current probe name: {e}")
-            return "Unknown"
-    
+                print(f"Error checking probe error status: {e}")
+            return True
+
     @property
     def current_probe_max_current(self):
         """Read-only property that returns the maximum current the connected probe can handle"""
@@ -236,6 +159,19 @@ class LTpowerAnalyzer:
             return 0.0
     
     @property
+    def current_probe_name(self):
+        """Read-only property that returns the current probe name"""
+        try:
+            if self.isConnected and self.current_probe_connected:
+                return self.meter.AcCurrentProbeName
+            else:
+                return "No probe connected"
+        except Exception as e:
+            if self.debug:
+                print(f"Error reading current probe name: {e}")
+            return "Unknown"
+    
+    @property
     def current_probe_temperature(self):
         """Read-only property that returns the current probe temperature in Celsius"""
         try:
@@ -249,17 +185,77 @@ class LTpowerAnalyzer:
             return 0.0
     
     @property
-    def current_probe_error(self):
-        """Read-only property that returns True if there's an error with the current probe"""
+    def fft_average_count(self):
+        """Read-only property that returns the current fft average count"""
+        return self.meter.AcFFTAverageCount
+    
+    @property
+    def fft_bin_size(self):
+        """Read-only property that returns the current bin size in Hz"""
+        return self.meter.AcFFTBinSize
+    
+    @property
+    def fft_effective_noise_bandwidth(self):
+        """Read-only property that returns the current fft effective noise bandwidth in Hz"""
+        return self.meter.AcFFTEffectiveNoiseBandwidth
+    
+    @property
+    def fft_frequency(self):
+        """Read-only property that returns the current fft frequency data"""
+        return self.meter.AcFFTFrequencyData
+    
+    @property
+    def fft_gain_magnitude(self):
+        """Read-only property that returns the current fft gain data"""
+        return self.meter.AcFFTGainData
+    
+    @property
+    def fft_gain_phase(self):
+        """Read-only property that returns the current fft phase data"""
+        return self.meter.AcFFTPhaseData
+
+    @property
+    def fft_input(self):
+        """Read-only property that returns the current fft input data"""
+        return self.meter.AcFFTInputData
+    
+    @property
+    def fft_input_noise_density(self):
+        """Read-only property that returns the current fft input noise density"""
+        return self.meter.AcFFTInputNoiseDensity
+    
+    @property
+    def fft_output(self):
+        """Read-only property that returns the current fft output data"""
+        return self.meter.AcFFTOutputData
+    
+    @property
+    def fft_output_noise_density(self):
+        """Read-only property that returns the current fft output noise density"""
+        return self.meter.AcFFTOutputNoiseDensity
+    
+    @property
+    def fft_window(self):
+        """Read-only property that returns the current fft phase data"""
+        return self.meter.AcFFTWindow     
+    
+    @property
+    def gain_average_count(self):
+        """Read-only property that returns the current gain average count"""
+        return self.meter.AcGainAverageCount
+    
+    @property
+    def injection_amplitude(self):
+        """Read-only property that returns the current injection amplitude in Volts"""
         try:
             if self.isConnected:
-                return self.meter.AcCurrentProbeError
+                return self.meter.AcInjectionAmplitude
             else:
-                return True
+                return 0.0
         except Exception as e:
             if self.debug:
-                print(f"Error checking probe error status: {e}")
-            return True
+                print(f"Error reading injection amplitude: {e}")
+            return 0.0
 
     @property
     def injection_frequency(self):
@@ -275,19 +271,10 @@ class LTpowerAnalyzer:
             return 0.0
 
     @property
-    def injection_amplitude(self):
-        """Read-only property that returns the current injection amplitude in Volts"""
-        try:
-            if self.isConnected:
-                return self.meter.AcInjectionAmplitude
-            else:
-                return 0.0
-        except Exception as e:
-            if self.debug:
-                print(f"Error reading injection amplitude: {e}")
-            return 0.0
-
-    #add property for the sample rate
+    def is_connected(self):
+        """Read-only property that returns the connection status"""
+        return self.isConnected
+    
     @property
     def sample_frequency(self):
         """Read-only property that returns the current sample rate in Hz"""
@@ -301,6 +288,72 @@ class LTpowerAnalyzer:
     def sample_size_max(self):
         """Read-only property that returns the maximum sample size"""
         return self.meter.AcMaxInputSampleSize
+    
+    @property
+    def transient_input_data(self):
+        """Read-only property that returns the transient measurement input data"""
+        try:
+            if self.isConnected:
+                return self.meter.AcInputSampleData
+            else:
+                return None
+        except Exception as e:
+            if self.debug:
+                print(f"Error reading transient input data: {e}")
+            return None
+
+    @property
+    def transient_output_data(self):
+        """Read-only property that returns the transient measurement output data"""
+        try:
+            if self.isConnected:
+                return self.meter.AcOutputSampleData
+            else:
+                return None
+        except Exception as e:
+            if self.debug:
+                print(f"Error reading transient output data: {e}")
+            return None
+
+    @property
+    def transient_sample_count(self):
+        """Read-only property that returns the transient measurement sample count"""
+        try:
+            if self.isConnected:
+                # Get the sample count from the input data length
+                input_data = self.meter.AcInputSampleData
+                if input_data is not None:
+                    return len(input_data)
+                else:
+                    return 0
+            else:
+                return 0
+        except Exception as e:
+            if self.debug:
+                print(f"Error reading transient sample count: {e}")
+            return 0
+
+    @property
+    def transient_sample_frequency(self):
+        """Read-only property that returns the transient measurement sample frequency"""
+        try:
+            if self.isConnected:
+                return self.meter.AcSampleFrequency
+            else:
+                return 0.0
+        except Exception as e:
+            if self.debug:
+                print(f"Error reading transient sample frequency: {e}")
+            return 0.0
+
+    def __init__(self, debug=False):
+        """Constructor for the LTpowerAnalyzer class"""
+        try:
+            self.meter = LTpowerAnalyzerDriver()
+            self.isConnected = False
+            self.debug = debug  # Debug flag for status messages
+        except Exception as e:
+            print(f"Error initializing LTpowerAnalyzer: {e}")
 
     def _check_connection(self):
         """Run the CheckConnection to determine if the meter is connected"""
@@ -360,11 +413,11 @@ class LTpowerAnalyzer:
             return False, f"Error validating current probe: {e}"
     
     def get_current_probe_info(self):
-        \"\"\"Get comprehensive information about the connected current probe
+        """Get comprehensive information about the connected current probe
         
         Returns:
             dict: Dictionary containing probe information
-        \"\"\"
+        """
         probe_info = {
             'connected': self.current_probe_connected,
             'name': self.current_probe_name,
@@ -712,9 +765,7 @@ class LTpowerAnalyzer:
         except Exception as e:
             print(f"Error setting up gain-phase measurement: {e}")
             return False
-        
-    
-
+         
     def setup_trigger(self, trigger_config: 'LTpowerAnalyzer.TriggerSetup'):
         """Configure the trigger settings using a TriggerSetup configuration object"""
         try:
@@ -984,63 +1035,6 @@ class LTpowerAnalyzer:
         except Exception as e:
             print(f"Error executing PWL transient measurement: {e}")
             return False
-
-    @property
-    def transient_input_data(self):
-        """Read-only property that returns the transient measurement input data"""
-        try:
-            if self.isConnected:
-                return self.meter.AcInputSampleData
-            else:
-                return None
-        except Exception as e:
-            if self.debug:
-                print(f"Error reading transient input data: {e}")
-            return None
-
-    @property
-    def transient_output_data(self):
-        """Read-only property that returns the transient measurement output data"""
-        try:
-            if self.isConnected:
-                return self.meter.AcOutputSampleData
-            else:
-                return None
-        except Exception as e:
-            if self.debug:
-                print(f"Error reading transient output data: {e}")
-            return None
-
-    @property
-    def transient_sample_frequency(self):
-        """Read-only property that returns the transient measurement sample frequency"""
-        try:
-            if self.isConnected:
-                return self.meter.AcSampleFrequency
-            else:
-                return 0.0
-        except Exception as e:
-            if self.debug:
-                print(f"Error reading transient sample frequency: {e}")
-            return 0.0
-
-    @property
-    def transient_sample_count(self):
-        """Read-only property that returns the transient measurement sample count"""
-        try:
-            if self.isConnected:
-                # Get the sample count from the input data length
-                input_data = self.meter.AcInputSampleData
-                if input_data is not None:
-                    return len(input_data)
-                else:
-                    return 0
-            else:
-                return 0
-        except Exception as e:
-            if self.debug:
-                print(f"Error reading transient sample count: {e}")
-            return 0
 
    
  

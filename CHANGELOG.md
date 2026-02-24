@@ -1,10 +1,11 @@
 # Changelog for LTpowerAnalyzerPython
 
-## [0.0.14] - 2026-02-08
+## [0.0.14] - 2026-02-24
 ### Added
 1. LNA files now have option to not save data to files.
 2. LNA calibration file now doesn't timeout on bode100 first communication.
-
+3. LTPowerAnalyzerDriver.py added current source properties
+4. Alphabetized the properties.
 
 ## [0.0.13] - 2026-02-04
 ### Added
