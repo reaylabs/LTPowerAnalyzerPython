@@ -166,7 +166,7 @@ def main():
     
     # Global configuration variables
     SAVE_CSV_FILE = False   # Set to False to disable CSV file output
-    SAVE_PLOT_FILE = False  # Set to False to disable plot image output
+    SAVE_PLOT_FILE = True   # Set to False to disable plot image output
     
     print("LNAmplifier EEPROM Data Read Test")
     print("=" * 40)

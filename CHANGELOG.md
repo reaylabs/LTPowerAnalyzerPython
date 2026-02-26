@@ -1,5 +1,9 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.15] - 2026-02-26
+### Added
+1. Modified LNA files.
+
 ## [0.0.14] - 2026-02-24
 ### Added
 1. LNA files now have option to not save data to files.

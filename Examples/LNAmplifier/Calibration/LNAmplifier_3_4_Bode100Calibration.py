@@ -278,7 +278,7 @@ def main():
     SAVE_TO_CSV = False  # Set to False to disable CSV file output
     
     # Bode100 SCPI Configuration
-    BODE_IP = '192.168.4.104'  # Update with your Bode100 IP
+    BODE_IP = '192.168.4.32'  # Update with your Bode100 IP
     BODE_PORT = '5025'        # Update with your Bode100 port
  
     print("LNAmplifier Calibration Program With Bode100")
