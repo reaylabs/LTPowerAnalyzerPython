@@ -5,6 +5,7 @@
 import asyncio
 import serial
 import serial.tools.list_ports
+from datetime import datetime
 
 class SerialDeviceInfo:
     """
@@ -390,7 +391,7 @@ class SerialDevice:
 
         Args:
             port_index (int, optional): Specific port index. Defaults to self.port_index.
-
+"""  """
         Returns:
             SerialDeviceInfo or None
         """
@@ -543,7 +544,7 @@ class SerialDevice:
 
             # Extract integer and fractional parts
             integer_part = int(board_revision)
-            fractional_part = int((board_revision - integer_part) * 100)
+            fractional_part = round((board_revision - integer_part) * 10)
 
             # Combine into 16-bit value
             revision = (integer_part << 8) | (fractional_part & 0xFF)
@@ -588,6 +589,29 @@ class SerialDevice:
 
         except Exception as e:
             print(f"Error during calibration date set operation: {e}")
+            return None
+
+    def set_calibration_date_to_today(self, port_index=None):
+        """
+        Set the calibration date to today's date in the format mm-dd-yyyy 
+        to the specified port or currently selected one.
+
+        Args:
+            port_index (int, optional): Port index to use. Defaults to current port.
+
+        Returns:
+            int or None: Error code if any, otherwise None.
+        """
+        try:
+            # Get today's date and format it as mm-dd-yyyy
+            today = datetime.today()
+            today_formatted = today.strftime("%m-%d-%Y")
+            
+            # Call the existing set_calibration_date method with today's date
+            return self.set_calibration_date(today_formatted, port_index)
+            
+        except Exception as e:
+            print(f"Error during set calibration date to today operation: {e}")
             return None
 
     def set_led_green(self, port_index=None):
@@ -710,6 +734,29 @@ class SerialDevice:
 
         except Exception as e:
             print(f"Error during manufacture date set operation: {e}")
+            return None
+
+    def set_manufacture_date_to_today(self, port_index=None):
+        """
+        Set the manufacture date to today's date in the format mm-dd-yyyy 
+        to the specified port or currently selected one.
+
+        Args:
+            port_index (int, optional): Port index to use. Defaults to current port.
+
+        Returns:
+            int or None: Error code if any, otherwise None.
+        """
+        try:
+            # Get today's date and format it as mm-dd-yyyy
+            today = datetime.today()
+            today_formatted = today.strftime("%m-%d-%Y")
+            
+            # Call the existing set_manufacture_date method with today's date
+            return self.set_manufacture_date(today_formatted, port_index)
+            
+        except Exception as e:
+            print(f"Error during set manufacture date to today operation: {e}")
             return None
 
     def readln(self, ser, read_error=False):

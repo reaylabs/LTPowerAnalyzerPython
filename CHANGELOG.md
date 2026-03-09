@@ -1,5 +1,11 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.16] - 2026-03-08
+### Added
+1. Modified the LNA Calibration Folders
+2. Added the board revision, manufacture date, and calibration date programming.
+3. Modified the LNA ReadEEPROMDataTest directory
+
 ## [0.0.15] - 2026-02-26
 ### Added
 1. Modified LNA files.

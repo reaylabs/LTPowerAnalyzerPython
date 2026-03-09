@@ -31,7 +31,7 @@ Analysis Features:
 - Comparative summary table for easy filter performance comparison
 
 Usage:
-    python ReadEEPROMDataTest.py
+    python LNA4_ReadEEPROMData.py
 
 Requirements:
     - LNAmplifier device connected via serial port
