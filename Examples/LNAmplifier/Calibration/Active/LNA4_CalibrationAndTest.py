@@ -276,16 +276,17 @@ def main():
     """Main calibration function."""
     
     # Global configuration variables
-    SAVE_TO_CSV = True  # Set to False to disable CSV file output
+    SAVE_TO_CSV = False  # Set to False to disable CSV file output
     SET_CALIBRATION_DATE = True  # Set to True to update calibration date to todays date
-    SET_MANUFACTURE_DATE =False  # Set to True to update manufacture date to todays date
-    SET_BOARD_REVISION = False  # Set to True to update board
+    SET_MANUFACTURE_DATE = False  # Set to True to update manufacture date to todays date
+    SET_BOARD_REVISION = True  # Set to True to update board
 
+  
     #Board Revision
     BOARD_REVISION = 4.0
     CALIBRATION_DATE = datetime.now().strftime("%m-%d-%Y")  # Use today's date for calibration date
-    #MANUFACTURE_DATE = datetime.now().strftime("%m-%d-%Y")  # Use today's date for manufacture date
-    MANUFACTURE_DATE = "02-08-2026"  # Set a fixed manufacture date (can be updated to today's date if desired)
+    MANUFACTURE_DATE = datetime.now().strftime("%m-%d-%Y")  # Use today's date for manufacture date
+    #MANUFACTURE_DATE = "02-08-2026"  # Set a fixed manufacture date (can be updated to today's date if desired)
     
     # Bode100 SCPI Configuration
     BODE_IP = '192.168.4.48'  # Update with your Bode100 IP
@@ -545,6 +546,69 @@ def main():
             print(f"  Gain Range: {min(current_gains):.2f} dB to {max(current_gains):.2f} dB")
             print(f"  Phase Range: {min(current_phases):.1f}° to {max(current_phases):.1f}°")
         
+            # check the gain at test frequencies and compare to expected gain 
+            
+            # Expected gains array: [filter_number][frequency][desired_gain] = expected_gain
+            expected_gains = {
+                1: {  # Filter 1
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    3894332.6905: {1: 50.04, 2: 23.0},  # At 3894332.6905 Hz
+                },
+                2: {  # Filter 2
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    1055213.5289: {1: 49.66, 2: 19.46}  # At 1055213.5289 Hz
+                },
+                3: {  # Filter 3
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    138419.14148: {1: 51.36, 2: 21.0}  # At 138419.14148 Hz
+                },
+                4: {  # Filter 4
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    46625.006097: {1: 50.45, 2: 20.1}  # At 46625.006097 Hz
+                },
+                5: {  # Filter 5 (same as Filter 1 but with gain 2)
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    3894332.6905: {1: 50.04, 2: 23.0},  # At 3894332.6905 Hz
+                },
+                6: {  # Filter 6 (same as Filter 2 but with gain 2)
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    1055213.5289: {1: 49.66, 2: 19.46}  # At 1055213.5289 Hz
+                },
+                7: {  # Filter 7 (same as Filter 3 but with gain 2)
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    138419.14148: {1: 51.36, 2: 21.0}  # At 138419.14148 Hz
+                },
+                8: {  # Filter 8 (same as Filter 4 but with gain 2)
+                    10.328125: {1: 56.8, 2: 26.4},    # At 10.328125 Hz
+                    10162.73853: {1: 60.5, 2: 30.15},  # At 10162.73853 Hz
+                    46625.006097: {1: 50.45, 2: 20.1}  # At 46625.006097 Hz
+                }
+            }
+
+            # Get test frequencies for this specific filter
+            test_frequencies = list(expected_gains[filter_num].keys())
+
+            print(f"\nGain at key frequencies for Filter {filter_num}:")
+            for test_freq in test_frequencies:
+                # Find the index of the closest frequency in the measured data
+                closest_index = min(range(len(frequencies)), key=lambda i: abs(frequencies[i] - test_freq))
+                closest_freq = frequencies[closest_index]
+                gain_at_closest_freq = all_gains[filter_num][closest_index]
+                expected_gain = expected_gains[filter_num][test_freq][desired_gain]
+                print(f"  {closest_freq:.0f} Hz: {gain_at_closest_freq:.2f} dB (expected {expected_gain} dB)")
+                #If the gain at test frequency is not within 1dB of the expected gain, exit the calibration
+                if abs(gain_at_closest_freq - expected_gain) > 1.0:
+                    print(f"✗ Gain at {closest_freq:.0f} Hz is not within 1dB of expected {expected_gain} dB")
+                    print("Calibration failed - please check connections and settings")
+                    return
+                
         # Check if we have any successful measurements
         if frequencies is None or len(all_gains) == 0:
             print("\n✗ No successful measurements to store!")
@@ -579,7 +643,7 @@ def main():
             print("--- Data Verification ---")
             
             all_verifications = []
-            
+
             # Verify frequency data
             freq_verify = verify_eeprom_data(
                 lna_device, port_index, frequencies,

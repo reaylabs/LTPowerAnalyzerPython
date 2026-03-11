@@ -1,5 +1,10 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.17] - 2026-03-11
+### Added
+1. Modified the LNA4_CalibrationAndTest.py to check for three absolute data points per gain/filter combination.
+2. Added the requirements.txt file to be able to recreate the python environment.
+
 ## [0.0.16] - 2026-03-08
 ### Added
 1. Modified the LNA Calibration Folders
