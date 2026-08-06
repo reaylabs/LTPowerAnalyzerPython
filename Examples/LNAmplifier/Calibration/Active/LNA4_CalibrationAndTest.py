@@ -278,7 +278,7 @@ def main():
     # Global configuration variables
     SAVE_TO_CSV = False  # Set to False to disable CSV file output
     SET_CALIBRATION_DATE = True  # Set to True to update calibration date to todays date
-    SET_MANUFACTURE_DATE = False  # Set to True to update manufacture date to todays date
+    SET_MANUFACTURE_DATE = True  # Set to True to update manufacture date to todays date
     SET_BOARD_REVISION = True  # Set to True to update board
 
   
@@ -287,9 +287,9 @@ def main():
     CALIBRATION_DATE = datetime.now().strftime("%m-%d-%Y")  # Use today's date for calibration date
     MANUFACTURE_DATE = datetime.now().strftime("%m-%d-%Y")  # Use today's date for manufacture date
     #MANUFACTURE_DATE = "02-08-2026"  # Set a fixed manufacture date (can be updated to today's date if desired)
-    
+
     # Bode100 SCPI Configuration
-    BODE_IP = '192.168.4.48'  # Update with your Bode100 IP
+    BODE_IP = '192.168.4.43'  # Update with your Bode100 IP
     BODE_PORT = '5025'        # Update with your Bode100 port
  
     print("LNAmplifier Calibration Program With Bode100")

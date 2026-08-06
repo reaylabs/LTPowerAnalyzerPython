@@ -1,5 +1,10 @@
 # Changelog for LTpowerAnalyzerPython
 
+## [0.0.18] - 2026-08-06
+### Added
+1. Added the PSRR Injector control program
+2. Added the HD304MSO scope to the instrument driver
+
 ## [0.0.17] - 2026-03-11
 ### Added
 1. Modified the LNA4_CalibrationAndTest.py to check for three absolute data points per gain/filter combination.

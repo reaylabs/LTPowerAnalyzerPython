@@ -37,6 +37,7 @@ History:
 import pyvisa
 import math
 import os
+import time
 
 class Instrument:
     def __init__(self, model: str, address: str = None, debug: bool = False):
@@ -2184,6 +2185,213 @@ class AFG3102(Instrument):
         self.set_amplitude(channel, amplitude, "VPP")
         self.set_duty_cycle(channel, duty_cycle)
         self.set_offset(channel, offset)
+
+class HD304MSO(Instrument):
+    def __init__(self, model: str = "HD304MSO", address: str = None, debug: bool = False):
+        """
+        Initializes the HD304MSO Keysight Mixed Signal Oscilloscope.
+
+        :param model: Model of the instrument (default is "HD304MSO").
+        :param address: VISA address of the instrument.
+        :param debug: Enables debug mode if True.
+        """
+        super().__init__(model, address, debug)
+        self._read_termination = '\n'
+        self._write_termination = '\n'
+        self._timeout = 5000
+
+    def autoscale_vertical_channel(self, channel):
+        """
+        Queries current Vpp and dynamically adjusts the vertical scale 
+        to fit the waveform nicely within the screen divisions.
+        """
+        try:
+            # 1. Query the raw peak-to-peak voltage
+            raw_vpp = float(self._instrument.query(f":MEASure:VPP? CHANnel{channel}"))
+            
+            # 2. Check for signal availability and avoid Keysight's overrange error (9.9E+37)
+            if 0 < raw_vpp < 9.0e37:
+                # Fit the signal nicely within roughly 6 of the 8 screen divisions
+                optimized_scale = raw_vpp / 6.0 
+                self._instrument.write(f":CHANnel{channel}:SCALe {optimized_scale}")
+                
+                # Allow the physical internal analog hardware relays to settle
+                time.sleep(0.1)
+                
+        except (ValueError, Exception) as e:
+            # Prevent string parse failures or VISA timeouts from crashing your sweep loop
+            print(f"Warning: Failed to auto-scale Channel {channel} vertically: {e}")
+
+    def configure_fft(self, frequency_hz, math_channel=1, window_percent=0.10):
+        """
+        Configures and centers the FFT math viewport tightly around the target 
+        frequency to isolate the injection signal and block out out-of-band noise.
+        
+        Parameters:
+            frequency_hz (float): The target injection step frequency (e.g., 100000)
+            math_channel (int): Math layer index (1 for M1)
+            window_percent (float): Total band width around target (0.10 = +/- 10%)
+        """
+        try:
+            if frequency_hz <= 0:
+                return
+
+            self._instrument.write(f":FUNCtion{math_channel}:FFT:ASETup OFF")
+
+            # 1. Calculate the localized span width (e.g., at 100 kHz, span is 20 kHz)
+            local_span = frequency_hz * window_percent * 2.0
+
+            # 2. Position the FFT center directly on the expected tone frequency
+            self._instrument.write(f":FUNCtion{math_channel}:FFT:CENTer {frequency_hz}")
+            
+            # 3. Apply the narrow span box to filter out DC rails and high-frequency noise
+            self._instrument.write(f":FUNCtion{math_channel}:FFT:SPAN {local_span}")
+            
+        except Exception as e:
+            print(f"Warning: Failed to configure FFT window zoom on M{math_channel}: {e}")
+
+    def configure_waveform(self, channel: int, waveform: str, amplitude: float, offset: float = 0.0):
+        """
+        Configures the waveform generator on the specified channel.
+
+        :param channel: WaveGen channel number.
+        :param waveform: Waveform type ("SIN", "SQU", "RAMP", "PULS", "NOIS", "DC").
+        :param amplitude: Amplitude in Vpp.
+        :param offset: DC offset in volts (default is 0.0).
+        """
+        if not self.is_connected:
+            raise RuntimeError("Instrument is not connected.")
+
+        valid_waveforms = ["SIN", "SQU", "RAMP", "PULS", "NOIS", "DC"]
+        if waveform.upper() not in valid_waveforms:
+            raise ValueError(f"Invalid waveform. Must be one of: {valid_waveforms}")
+
+        try:
+            self._instrument.write(f":WGEN{channel}:FUNC {waveform.upper()}")
+            self._instrument.write(f":WGEN{channel}:VOLT {amplitude}")
+            self._instrument.write(f":WGEN{channel}:VOLT:OFFS {offset}")
+            if self.debug:
+                print(f"Configured WaveGen{channel}: {waveform.upper()}, {amplitude} Vpp, {offset} V offset")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to configure waveform: {e}")
+
+    def disable_waveform(self, channel: int):
+        """
+        Disables the waveform generator output on the specified channel.
+
+        :param channel: WaveGen channel number.
+        """
+        if not self.is_connected:
+            raise RuntimeError("Instrument is not connected.")
+
+        try:
+            self._instrument.write(f":WGEN{channel}:OUTP OFF")
+            if self.debug:
+                print(f"WaveGen{channel} output disabled")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to disable waveform output: {e}")
+
+    def enable_waveform(self, channel: int):
+        """
+        Enables the waveform generator output on the specified channel.
+
+        :param channel: WaveGen channel number.
+        """
+        if not self.is_connected:
+            raise RuntimeError("Instrument is not connected.")
+
+        try:
+            self._instrument.write(f":WGEN{channel}:OUTP ON")
+            if self.debug:
+                print(f"WaveGen{channel} output enabled")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to enable waveform output: {e}")
+
+    def get_fft_vmax(self,math_channel=1):
+        """
+        Queries the absolute noise-isolated peak metrics inside the current FFT view.
+        
+        Returns:
+            amplitude_dbv
+        """
+        try:     
+            math_layer = f"MATH{math_channel}"
+            self._instrument.write(f":MEASure:VMAX {math_layer}")  
+            amplitude_dbv = self._instrument.query(f":MEASure:VMAX? {math_layer}")    
+            return amplitude_dbv
+        except Exception as e:
+            print(f"Warning: Data extraction failed on M{math_channel}: {e}")
+            return None, None
+
+    def set_frequency(self, channel: int, frequency: float):
+        """
+        Sets the waveform generator frequency on the specified channel.
+
+        :param channel: WaveGen channel number.
+        :param frequency: Frequency in Hz.
+        """
+        if not self.is_connected:
+            raise RuntimeError("Instrument is not connected.")
+
+        if frequency <= 0:
+            raise ValueError("Frequency must be positive.")
+
+        try:
+            self._instrument.write(f":WGEN{channel}:FREQ {frequency}")
+            if self.debug:
+                print(f"Set WaveGen{channel} frequency to {frequency} Hz")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to set frequency: {e}")
+
+    def optimize_time_base(self, frequency, cycle_count = 100):
+        """
+        Sets the scope timebase to capture the specified number of full cycles of the
+        injection frequency across the 10 horizontal screen divisions.
+
+        :param frequency: Signal frequency in Hz.
+        :param cycle_count: Number of cycles to display (default is 100).
+        """
+        try:
+            if frequency <= 0:
+                return
+
+            optimized_scale = cycle_count / (10.0 * frequency)
+            
+            # Hardware Safety Guardrails (Prevents passing invalid parameters 
+            # if the sweep steps into extremely high or low frequencies)
+            # Max scale: 50 s/div | Min scale: 500 ps/div
+            optimized_scale = max(500e-12, min(optimized_scale, 50.0))
+            
+            # Apply the calculated value directly to the scope's horizontal axis
+            self._instrument.write(f":TIMebase:SCALe {optimized_scale}")
+            
+        except Exception as e:
+            print(f"Warning: Failed to scale timebase for 100-cycle FFT: {e}")
+
+    def set_acquire_averaging(self, count):
+        """
+        Sets the acquire mode to averaging with the specified number of averages.
+
+        :param count: Number of averages (must be a power of 2, e.g., 2, 4, 8, ... 65536).
+        """
+        try:
+            self._instrument.write(":ACQuire:TYPE AVERage")
+            self._instrument.write(f":ACQuire:COUNt {count}")
+            if self.debug:
+                print(f"Acquire mode set to averaging with {count} averages")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to set acquire averaging: {e}")
+
+    def set_acquire_normal(self):
+        """
+        Sets the acquire mode back to normal (no averaging).
+        """
+        try:
+            self._instrument.write(":ACQuire:TYPE NORMal")
+            if self.debug:
+                print("Acquire mode set to normal")
+        except pyvisa.VisaIOError as e:
+            print(f"Failed to set acquire mode to normal: {e}")
 
 # Example usage
 if __name__ == "__main__":

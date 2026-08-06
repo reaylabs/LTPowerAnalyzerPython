@@ -148,6 +148,21 @@ def to_engineering(value, unit=''):
     # Format with appropriate prefix
     return f"{scaled:.4g} {prefixes[exp3 + 4]}{unit}"
 
+def generate_log_frequencies(start_frequency, end_frequency, point_count):
+    """
+    Generate a logarithmically spaced array of frequencies matching Bode100 output.
+
+    :param start_frequency: Start frequency in Hz.
+    :param end_frequency: End frequency in Hz.
+    :param point_count: Number of frequency points.
+    :return: List of frequencies in Hz.
+    """
+    frequencies = []
+    for i in range(point_count):
+        exponent = math.log10(start_frequency) + i * (math.log10(end_frequency) - math.log10(start_frequency)) / (point_count - 1)
+        frequencies.append(10 ** exponent)
+    return frequencies
+
 def save_data_to_csv(headers, data_rows, full_path):
     """Save measurement data to CSV file"""
     try:
